@@ -1,0 +1,3 @@
+[submodule "OpenHarmonyASF"]
+	path = OpenHarmonyASF
+	url = https://github.com/DaLongZhuaZi/OpenHarmonyASF.git

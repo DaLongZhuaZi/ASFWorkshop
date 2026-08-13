@@ -1,0 +1,287 @@
+import { SteamArkLog } from '../../steamServices';
+import { ngfPagePolicyHostFacade } from 'ngf_framework';
+import { NGFDisplayMode } from 'ngf_framework';
+import {
+  NGFPageWindowProfile,
+  NGFWindowOrientationPreference,
+  NGFWindowSystemBarPolicy,
+  NGFWindowSystemBarStyle
+} from 'ngf_framework';
+import { ngfPlatformWindowManagerFacade } from 'ngf_framework';
+import { NGFHdsDemoRouteName } from './HdsDemoRoutes';
+import { SteamArkRouteName } from '../steamArk/SteamArkRoutes';
+
+import window from '@ohos.window';
+
+const TAG: string = 'NGFPageWindowSupport';
+
+export class NGFPageWindowName {
+  static readonly MAIN_MENU: string = 'pages/ngf/MainMenuPage';
+  static readonly STEAM_HOME: string = SteamArkRouteName.HOME;
+  static readonly HDS_SHOWCASE: string = NGFHdsDemoRouteName.SHOWCASE;
+  static readonly HDS_OFFICIAL_NAVIGATION: string = NGFHdsDemoRouteName.OFFICIAL_NAVIGATION;
+  static readonly HDS_OFFICIAL_NAVIGATION_OVERVIEW: string = NGFHdsDemoRouteName.OFFICIAL_NAVIGATION_OVERVIEW;
+  static readonly HDS_OFFICIAL_NAVIGATION_MATERIAL: string = NGFHdsDemoRouteName.OFFICIAL_NAVIGATION_MATERIAL;
+  static readonly HDS_OFFICIAL_NAVIGATION_EFFECT: string = NGFHdsDemoRouteName.OFFICIAL_NAVIGATION_EFFECT;
+  static readonly DEMO_SECURITY_PERF: string = NGFHdsDemoRouteName.DEMO_SECURITY_PERF;
+  static readonly DEMO_DATA_STORAGE: string = NGFHdsDemoRouteName.DEMO_DATA_STORAGE;
+  static readonly DEMO_WORKFLOW: string = NGFHdsDemoRouteName.DEMO_WORKFLOW;
+  static readonly DEMO_DEVICE_DISPLAY: string = NGFHdsDemoRouteName.DEMO_DEVICE_DISPLAY;
+  static readonly SYSTEM_RESOURCE_PREVIEW: string = NGFHdsDemoRouteName.SYSTEM_RESOURCE_PREVIEW;
+  static readonly STEAM_WORKSPACE: string = NGFHdsDemoRouteName.STEAM_WORKSPACE;
+  static readonly STEAM_ACCOUNTS: string = NGFHdsDemoRouteName.STEAM_ACCOUNTS;
+  static readonly STEAM_INVENTORY: string = NGFHdsDemoRouteName.STEAM_INVENTORY;
+  static readonly STEAM_NETWORK: string = NGFHdsDemoRouteName.STEAM_NETWORK;
+}
+
+class NGFPageWindowStyleFactory {
+  static buildTransparentLightStyle(): NGFWindowSystemBarStyle {
+    const style = new NGFWindowSystemBarStyle();
+    style.enabled = true;
+    style.statusBarColor = '#00000000';
+    style.navigationBarColor = '#00000000';
+    style.statusBarContentColor = '#FFFFFFFF';
+    style.navigationBarContentColor = '#FFFFFFFF';
+    style.isStatusBarLightIcon = true;
+    style.isNavigationBarLightIcon = true;
+    style.enableStatusBarAnimation = true;
+    style.enableNavigationBarAnimation = true;
+    return style;
+  }
+
+  static buildSurfaceDarkTextStyle(): NGFWindowSystemBarStyle {
+    const style = new NGFWindowSystemBarStyle();
+    style.enabled = true;
+    style.statusBarColor = '#FFF8FAFC';
+    style.navigationBarColor = '#FFF8FAFC';
+    style.statusBarContentColor = '#0F172A';
+    style.navigationBarContentColor = '#0F172A';
+    style.isStatusBarLightIcon = false;
+    style.isNavigationBarLightIcon = false;
+    style.enableStatusBarAnimation = true;
+    style.enableNavigationBarAnimation = true;
+    return style;
+  }
+}
+
+export class NGFPageWindowSupport {
+  private static initialized: boolean = false;
+
+  static loadDynamicTopInset(uiCtx: UIContext | undefined, baseTitleHeight: number, fallbackInset: number, callback: (inset: number) => void): void {
+    if (!uiCtx) {
+      SteamArkLog.debug(TAG, 'top inset fallback used; reason=no UI context');
+      callback(fallbackInset);
+      return;
+    }
+    const hostCtx = uiCtx.getHostContext();
+    if (!hostCtx) {
+      SteamArkLog.debug(TAG, 'top inset fallback used; reason=no host context');
+      callback(fallbackInset);
+      return;
+    }
+    window.getLastWindow(hostCtx).then((lastWindow: window.Window): void => {
+      const topArea: window.AvoidArea = lastWindow.getWindowAvoidArea(window.AvoidAreaType.TYPE_SYSTEM);
+      const statusBarHeightVp = uiCtx.px2vp(topArea.topRect.height);
+      callback(statusBarHeightVp + baseTitleHeight);
+      SteamArkLog.debug(TAG, 'top inset resolved; value=' + String(statusBarHeightVp + baseTitleHeight));
+    }).catch((_err: Error): void => {
+      SteamArkLog.warn(TAG, 'top inset resolution failed; fallback used; errorType=' + SteamArkLog.errorKind(_err));
+      callback(fallbackInset);
+    });
+  }
+
+  static ensureProfilesRegistered(): void {
+    if (NGFPageWindowSupport.initialized) {
+      return;
+    }
+
+    const profiles: Array<NGFPageWindowProfile> = [];
+    profiles.push(
+      NGFPageWindowSupport.buildProfile(
+        NGFPageWindowName.MAIN_MENU,
+        NGFDisplayMode.IMMERSIVE_WITH_BARS,
+        NGFPageWindowStyleFactory.buildTransparentLightStyle(),
+        0
+      )
+    );
+    profiles.push(
+      NGFPageWindowSupport.buildProfile(
+        NGFPageWindowName.HDS_SHOWCASE,
+        NGFDisplayMode.IMMERSIVE_WITH_BARS,
+        NGFPageWindowStyleFactory.buildTransparentLightStyle(),
+        48
+      )
+    );
+    profiles.push(
+      NGFPageWindowSupport.buildProfile(
+        NGFPageWindowName.HDS_OFFICIAL_NAVIGATION,
+        NGFDisplayMode.IMMERSIVE_WITH_BARS,
+        NGFPageWindowStyleFactory.buildTransparentLightStyle(),
+        48
+      )
+    );
+    profiles.push(
+      NGFPageWindowSupport.buildProfile(
+        NGFPageWindowName.HDS_OFFICIAL_NAVIGATION_OVERVIEW,
+        NGFDisplayMode.IMMERSIVE_WITH_BARS,
+        NGFPageWindowStyleFactory.buildTransparentLightStyle(),
+        48
+      )
+    );
+    profiles.push(
+      NGFPageWindowSupport.buildProfile(
+        NGFPageWindowName.HDS_OFFICIAL_NAVIGATION_MATERIAL,
+        NGFDisplayMode.IMMERSIVE_WITH_BARS,
+        NGFPageWindowStyleFactory.buildTransparentLightStyle(),
+        48
+      )
+    );
+    profiles.push(
+      NGFPageWindowSupport.buildProfile(
+        NGFPageWindowName.HDS_OFFICIAL_NAVIGATION_EFFECT,
+        NGFDisplayMode.IMMERSIVE_WITH_BARS,
+        NGFPageWindowStyleFactory.buildTransparentLightStyle(),
+        48
+      )
+    );
+    profiles.push(
+      NGFPageWindowSupport.buildProfile(
+        NGFPageWindowName.DEMO_SECURITY_PERF,
+        NGFDisplayMode.IMMERSIVE_WITH_BARS,
+        NGFPageWindowStyleFactory.buildTransparentLightStyle(),
+        48
+      )
+    );
+    profiles.push(
+      NGFPageWindowSupport.buildProfile(
+        NGFPageWindowName.DEMO_DATA_STORAGE,
+        NGFDisplayMode.IMMERSIVE_WITH_BARS,
+        NGFPageWindowStyleFactory.buildTransparentLightStyle(),
+        48
+      )
+    );
+    profiles.push(
+      NGFPageWindowSupport.buildProfile(
+        NGFPageWindowName.DEMO_WORKFLOW,
+        NGFDisplayMode.IMMERSIVE_WITH_BARS,
+        NGFPageWindowStyleFactory.buildTransparentLightStyle(),
+        48
+      )
+    );
+    profiles.push(
+      NGFPageWindowSupport.buildProfile(
+        NGFPageWindowName.DEMO_DEVICE_DISPLAY,
+        NGFDisplayMode.IMMERSIVE_WITH_BARS,
+        NGFPageWindowStyleFactory.buildTransparentLightStyle(),
+        48
+      )
+    );
+    profiles.push(
+      NGFPageWindowSupport.buildProfile(
+        NGFPageWindowName.SYSTEM_RESOURCE_PREVIEW,
+        NGFDisplayMode.IMMERSIVE_WITH_BARS,
+        NGFPageWindowStyleFactory.buildTransparentLightStyle(),
+        48
+      )
+    );
+    profiles.push(
+      NGFPageWindowSupport.buildProfile(
+        NGFPageWindowName.STEAM_HOME,
+        NGFDisplayMode.IMMERSIVE_WITH_BARS,
+        NGFPageWindowStyleFactory.buildTransparentLightStyle(),
+        0
+      )
+    );
+    profiles.push(
+      NGFPageWindowSupport.buildProfile(
+        NGFPageWindowName.STEAM_WORKSPACE,
+        NGFDisplayMode.IMMERSIVE_WITH_BARS,
+        NGFPageWindowStyleFactory.buildTransparentLightStyle(),
+        48
+      )
+    );
+    profiles.push(
+      NGFPageWindowSupport.buildProfile(
+        NGFPageWindowName.STEAM_ACCOUNTS,
+        NGFDisplayMode.IMMERSIVE_WITH_BARS,
+        NGFPageWindowStyleFactory.buildTransparentLightStyle(),
+        48
+      )
+    );
+    profiles.push(
+      NGFPageWindowSupport.buildProfile(
+        NGFPageWindowName.STEAM_INVENTORY,
+        NGFDisplayMode.IMMERSIVE_WITH_BARS,
+        NGFPageWindowStyleFactory.buildTransparentLightStyle(),
+        48
+      )
+    );
+    profiles.push(
+      NGFPageWindowSupport.buildProfile(
+        NGFPageWindowName.STEAM_NETWORK,
+        NGFDisplayMode.IMMERSIVE_WITH_BARS,
+        NGFPageWindowStyleFactory.buildTransparentLightStyle(),
+        48
+      )
+    );
+
+    for (let index = 0; index < profiles.length; index++) {
+      ngfPlatformWindowManagerFacade.registerPageProfile(profiles[index]);
+    }
+
+    NGFPageWindowSupport.initialized = true;
+    SteamArkLog.info(TAG, '注册演示窗口配置: 数量=' + String(profiles.length));
+  }
+
+  static apply(pageName: string): void {
+    NGFPageWindowSupport.ensureProfilesRegistered();
+    ngfPagePolicyHostFacade.applyPolicy(pageName);
+    ngfPagePolicyHostFacade.reapplyPolicy(pageName);
+    SteamArkLog.info(TAG, 'window policy applied; page=' + pageName);
+  }
+
+  static restore(pageName: string): void {
+    NGFPageWindowSupport.apply(pageName);
+  }
+
+  static restoreMainMenu(): void {
+    NGFPageWindowSupport.apply(NGFPageWindowName.MAIN_MENU);
+  }
+
+  static restoreSteamHome(): void {
+    NGFPageWindowSupport.apply(NGFPageWindowName.STEAM_HOME);
+  }
+
+  private static buildProfile(
+    pageName: string,
+    displayMode: NGFDisplayMode,
+    style: NGFWindowSystemBarStyle,
+    reapplyDelayMs: number
+  ): NGFPageWindowProfile {
+    return new NGFPageWindowProfile(
+      pageName,
+      displayMode,
+      NGFWindowOrientationPreference.UNSPECIFIED,
+      displayMode !== NGFDisplayMode.DEFAULT,
+      NGFPageWindowSupport.buildSystemBarPolicy(displayMode, style),
+      reapplyDelayMs
+    );
+  }
+
+  private static buildSystemBarPolicy(
+    displayMode: NGFDisplayMode,
+    style: NGFWindowSystemBarStyle
+  ): NGFWindowSystemBarPolicy {
+    switch (displayMode) {
+      case NGFDisplayMode.FULL_IMMERSIVE:
+        return new NGFWindowSystemBarPolicy(false, false, false, true, style);
+      case NGFDisplayMode.STATUS_SAFE_BOTTOM_IMMERSIVE:
+        return new NGFWindowSystemBarPolicy(true, false, false, true, style);
+      case NGFDisplayMode.IMMERSIVE_WITH_BARS:
+        return new NGFWindowSystemBarPolicy(true, true, true, true, style);
+      case NGFDisplayMode.DEFAULT:
+      default:
+        return new NGFWindowSystemBarPolicy(true, true, true, true, style);
+    }
+  }
+}

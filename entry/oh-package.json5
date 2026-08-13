@@ -1,0 +1,14 @@
+{
+  "name": "entry",
+  "version": "1.0.0",
+  "description": "ASF Workshop HarmonyOS application module.",
+  "main": "",
+  "author": "DaLongzhuazi",
+  "license": "MIT",
+  "dependencies": {
+    "ngf_framework": "file:../ngf_framework",
+    "steam_core": "file:../OpenHarmonyASF/steam_core"
+  }
+}
+
+

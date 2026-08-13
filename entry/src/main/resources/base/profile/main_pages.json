@@ -1,0 +1,8 @@
+{
+  "src": [
+    "pages/steamArk/SteamArkHomePage",
+    "pages/steamArk/SteamArkStatusBallPage",
+    "pages/steamArk/SteamArkFriendsFloatingPage",
+    "pages/steamArk/SteamArkChatFloatingPage"
+  ]
+}
