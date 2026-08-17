@@ -670,7 +670,8 @@ export class SteamArkSocialService {
     this.requireCurrentRuntimeConfiguration(configurationGeneration);
     this.requireCurrentCacheGeneration(accountId, generation);
     const profile: SteamAccountProfile = account.profile;
-    const runtime: ISteamArkSocialRuntime = factory.create(profile, credentials, proxyPassword);
+    const runtime: ISteamArkSocialRuntime = factory.create(profile, credentials, proxyPassword,
+      steamArkStateService.resolveAccountLocale(accountId));
     const concurrent: ISteamArkSocialRuntime | undefined = this.runtimes.get(accountId);
     if (concurrent !== undefined && this.runtimeGenerations.get(accountId) === generation &&
       this.runtimeConfigurationGenerations.get(accountId) === configurationGeneration) {
@@ -781,7 +782,40 @@ export class SteamArkSocialService {
       this.setSessionNotice(event.accountId, event.friendSteamId64, event.active, generation);
       void this.persist(event.accountId, generation, configurationGeneration);
       this.emit(event.accountId, generation, configurationGeneration);
+      return;
     }
+    if (event.type === SteamArkSocialEventType.FRIEND_PRESENCE_CHANGED) {
+      // Real-time CM persona pushes only refresh the in-memory snapshot; the
+      // durable cache keeps the last full Web sync.
+      const current: SteamArkSocialSnapshot = this.getSnapshot(event.accountId);
+      const merged: Array<SteamArkFriendProfile> = this.mergePresenceChanges(current.friends, event.friends);
+      this.setSnapshot(new SteamArkSocialSnapshot(event.accountId, current.state,
+        merged, current.sessions, current.updatedAtEpochSeconds, current.errorMessage), generation,
+        configurationGeneration);
+      this.emit(event.accountId, generation, configurationGeneration);
+    }
+  }
+
+  private mergePresenceChanges(
+    current: Array<SteamArkFriendProfile>,
+    changes: Array<SteamArkFriendProfile>
+  ): Array<SteamArkFriendProfile> {
+    const bySteamId: Map<string, SteamArkFriendProfile> = new Map<string, SteamArkFriendProfile>();
+    for (let index: number = 0; index < current.length; index++) {
+      bySteamId.set(current[index].steamId64, current[index]);
+    }
+    for (let index: number = 0; index < changes.length; index++) {
+      bySteamId.set(changes[index].steamId64, changes[index]);
+    }
+    const merged: Array<SteamArkFriendProfile> = [];
+    bySteamId.forEach((friend: SteamArkFriendProfile): void => {
+      merged.push(friend);
+    });
+    merged.sort((left: SteamArkFriendProfile, right: SteamArkFriendProfile): number => {
+      if (left.personaState !== right.personaState) return right.personaState - left.personaState;
+      return left.displayName.localeCompare(right.displayName);
+    });
+    return merged;
   }
 
   private publishIncomingMessageNotification(accountId: string, message: SteamArkChatMessage): void {

@@ -1,5 +1,10 @@
 export {
   SteamArkAccountSnapshot,
+  STEAM_ARK_PROFILE_BACKGROUND_ENABLED_STORAGE_KEY,
+  STEAM_ARK_PROFILE_BACKGROUND_STORAGE_KEY,
+  STEAM_ARK_PROFILE_BACKGROUND_TILED_STORAGE_KEY,
+  SteamArkFarmingSettingsUpdate,
+  SteamArkFarmingListsUpdate,
   SteamArkGlobalConfigSnapshot,
   SteamArkGlobalImportSummary,
   SteamArkInventorySummary,
@@ -15,9 +20,40 @@ export {
   steamArkStateService
 } from './SteamArkStateService';
 export { SteamArkLog } from './SteamArkLogger';
+export {
+  STEAM_ARK_HYPER_SNAP_ENABLED_STORAGE_KEY,
+  SteamArkHyperSnapFailureKind,
+  SteamArkHyperSnapManager,
+  SteamArkHyperSnapResult,
+  steamArkHyperSnapManager
+} from './SteamArkHyperSnapManager';
+export {
+  SteamArkHyperSnapRecoveryCoordinator,
+  steamArkHyperSnapRecoveryCoordinator
+} from './SteamArkHyperSnapRecoveryCoordinator';
+export {
+  SteamArkAccountRegion,
+  SteamArkContentLocale,
+  SteamArkRegionPolicy
+} from './SteamArkRegionPolicy';
 export { ASFWorkshopProductIdentity } from './ASFWorkshopProductIdentity';
 export {
+  ISteamArkConfirmationClient,
+  SteamArkConfirmationService,
+  SteamArkConfirmationSnapshot,
+  SteamArkConfirmationState,
+  steamArkConfirmationService
+} from './SteamArkConfirmationService';
+export {
+  SteamArkStoreSearchItem,
+  SteamArkStoreSearchResult,
+  SteamArkStoreService,
+  SteamArkWishlistResult,
+  steamArkStoreService
+} from './SteamArkStoreService';
+export {
   SteamArkNotificationChatLaunchRequest,
+  SteamArkNotificationFarmingLaunchRequest,
   SteamArkNotificationMessageLaunchRequest,
   SteamArkNotificationNavigation
 } from './SteamArkNotificationNavigation';
@@ -43,6 +79,8 @@ export {
   SteamArkResolvedProfile
 } from './SteamArkProfileContracts';
 export {
+  SteamArkMarketBrowseResult,
+  SteamArkMarketListing,
   SteamArkMarketPrice,
   SteamArkMarketPriceBatch,
   SteamArkMarketPriceService
@@ -76,6 +114,13 @@ export {
   SteamArkSocialSnapshotListener
 } from './SteamArkSocialContracts';
 export { SteamArkSocialService, steamArkSocialService } from './SteamArkSocialService';
+export {
+  ISteamArkGameLibraryAdapter,
+  ISteamArkGameLibraryAdapterFactory,
+  SteamArkGameLibrarySnapshot,
+  SteamArkGameLibrarySnapshotListener
+} from './SteamArkGameLibraryContracts';
+export { SteamArkGameLibraryService, steamArkGameLibraryService } from './SteamArkGameLibraryService';
 export {
   SteamArkAccountSyncSnapshot,
   SteamArkCacheFreshnessSnapshot,

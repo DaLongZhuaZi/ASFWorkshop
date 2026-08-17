@@ -23,6 +23,7 @@ import {
   SteamAsfJsonImporter,
   SteamBotConfig,
   SteamCredentialSet,
+  SteamFarmingPreference,
   SteamFarmingOrder,
   SteamGlobalConfig,
   SteamGlobalConfigImportResult,
@@ -64,6 +65,11 @@ import { SteamArkLog } from './SteamArkLogger';
 import { steamArkCoreLogger } from './SteamArkCoreLogger';
 import { SteamArkMarketPriceService } from './SteamArkMarketPriceService';
 import { SteamArkMessageCacheStore } from './SteamArkMessageCacheStore';
+import {
+  SteamArkAccountRegion,
+  SteamArkContentLocale,
+  SteamArkRegionPolicy
+} from './SteamArkRegionPolicy';
 
 type SteamArkMessageAction = (resolver: ISteamArkMessageResolver, profile: SteamAccountProfile,
   credentials: SteamCredentialSet, proxyPassword: string) => Promise<void>;
@@ -78,6 +84,7 @@ const GLOBAL_IPC_PASSWORD_NAME: string = 'ipc_password';
 const GLOBAL_WEB_PROXY_PASSWORD_NAME: string = 'web_proxy_password';
 export const STEAM_ARK_PROFILE_BACKGROUND_STORAGE_KEY: string = 'steam_ark_profile_background_url';
 export const STEAM_ARK_PROFILE_BACKGROUND_TILED_STORAGE_KEY: string = 'steam_ark_profile_background_tiled';
+export const STEAM_ARK_PROFILE_BACKGROUND_ENABLED_STORAGE_KEY: string = 'steam_ark_profile_background_enabled';
 const INVENTORY_CACHE_TTL_MS: number = 24 * 60 * 60 * 1000;
 
 class SteamArkCachedInventoryItem {
@@ -208,6 +215,8 @@ export class SteamArkAccountSnapshot {
   readonly pendingAuth: SteamAuthPendingSnapshot | null;
   readonly migrationReport: SteamArkMigrationReport;
   readonly hasCredentialMaterial: boolean;
+  /** Stored Steam content region setting; SteamArkAccountRegion.AUTO derives from the profile. */
+  readonly region: string;
 
   constructor(
     profile: SteamAccountProfile,
@@ -215,7 +224,8 @@ export class SteamArkAccountSnapshot {
     session: SteamSessionSnapshot,
     migrationReport: SteamArkMigrationReport,
     hasCredentialMaterial: boolean,
-    pendingAuth: SteamAuthPendingSnapshot | null = null
+    pendingAuth: SteamAuthPendingSnapshot | null = null,
+    region: string = SteamArkAccountRegion.CN
   ) {
     this.profile = profile;
     this.config = config;
@@ -223,6 +233,7 @@ export class SteamArkAccountSnapshot {
     this.pendingAuth = pendingAuth;
     this.migrationReport = migrationReport;
     this.hasCredentialMaterial = hasCredentialMaterial;
+    this.region = region;
   }
 }
 
@@ -361,6 +372,43 @@ export class SteamArkInventorySummary {
   }
 }
 
+/**
+ * User-editable ASF farming values. Runtime instances keep their current
+ * configuration until the next farming start, while this snapshot is durable.
+ */
+export class SteamArkFarmingSettingsUpdate {
+  readonly enabled: boolean;
+  readonly hoursUntilCardDrops: number;
+  readonly maxGamesPlayedConcurrently: number;
+  readonly priorityQueueOnly: boolean;
+
+  constructor(
+    enabled: boolean,
+    hoursUntilCardDrops: number,
+    maxGamesPlayedConcurrently: number,
+    priorityQueueOnly: boolean
+  ) {
+    this.enabled = enabled;
+    this.hoursUntilCardDrops = hoursUntilCardDrops;
+    this.maxGamesPlayedConcurrently = maxGamesPlayedConcurrently;
+    this.priorityQueueOnly = priorityQueueOnly;
+  }
+}
+
+/** Full-replacement update for the local farming planning lists. */
+export class SteamArkFarmingListsUpdate {
+  readonly blacklist: Array<string>;
+  readonly priorityAppIds: Array<string>;
+
+  constructor(
+    blacklist: Array<string> = [],
+    priorityAppIds: Array<string> = []
+  ) {
+    this.blacklist = blacklist.slice();
+    this.priorityAppIds = priorityAppIds.slice();
+  }
+}
+
 export type SteamArkStateListener = (snapshot: SteamArkStateSnapshot) => void;
 
 /** Coordinates account-owned runtime cleanup without coupling state to farming implementation. */
@@ -383,6 +431,8 @@ class SteamArkAccountRecord {
   profileRefreshRetryGeneration: number;
   /** Marks a failed lookup that should dispatch its one retry after the current queue operation releases. */
   profileRefreshRetryPendingGeneration: number;
+  /** Stored Steam content region setting; SteamArkAccountRegion.AUTO derives from the profile. */
+  region: string;
 
   constructor(
     profile: SteamAccountProfile,
@@ -394,7 +444,10 @@ class SteamArkAccountRecord {
     autoRestoreEnabled: boolean = true,
     profileRefreshGeneration: number = 0,
     profileRefreshRetryGeneration: number = -1,
-    profileRefreshRetryPendingGeneration: number = -1
+    profileRefreshRetryPendingGeneration: number = -1,
+    // New accounts start on the CN preset (简体中文 + ￥); users can switch
+    // to AUTO or any other region in settings at any time.
+    region: string = SteamArkAccountRegion.CN
   ) {
     this.profile = profile;
     this.config = config;
@@ -406,6 +459,7 @@ class SteamArkAccountRecord {
     this.profileRefreshGeneration = profileRefreshGeneration;
     this.profileRefreshRetryGeneration = profileRefreshRetryGeneration;
     this.profileRefreshRetryPendingGeneration = profileRefreshRetryPendingGeneration;
+    this.region = region;
   }
 }
 
@@ -441,6 +495,7 @@ class SteamArkPersistedAccount {
   countryCode: string = '';
   walletBalance: string = '';
   walletCurrency: string = '';
+  region: string = SteamArkAccountRegion.AUTO;
   steamId64: string = '';
   accountEnabled: boolean = true;
   autoRestoreEnabled: boolean = true;
@@ -599,6 +654,7 @@ export class SteamArkStateService {
   /** Prevents callbacks from a runtime being stopped from overwriting the settled account state. */
   private readonly sessionUpdateBlockCounts: Map<string, number> = new Map<string, number>();
   private accountLifecycle: ISteamArkAccountLifecycle | null = null;
+  private regionChangeHandler: ((accountId: string) => Promise<void>) | null = null;
   private qrAccountSequence: number = 0;
   /** Captures the last explicit selection before each transient QR authentication begins. */
   private readonly qrAuthenticationSelectionGenerations: Map<string, number> = new Map<string, number>();
@@ -955,7 +1011,8 @@ export class SteamArkStateService {
     const result: SteamArkMessageSyncResult = await resolver.resolve(
       this.copyProfile(record.profile),
       credentials,
-      proxyPassword
+      proxyPassword,
+      this.resolveAccountLocale(normalizedId)
     );
     const cacheSaved: boolean = SteamArkMessageCacheStore.writeSyncResult(normalizedId, result);
     if (!cacheSaved && Number.isSafeInteger(result.syncedAtEpochSeconds) && result.syncedAtEpochSeconds > 0) {
@@ -1009,6 +1066,30 @@ export class SteamArkStateService {
 
   isAuthServiceReady(): boolean {
     return this.authServiceFactory !== null;
+  }
+
+  /**
+   * Registers a handler invoked after an account's content region changes so
+   * language-dependent caches outside this service (game library names, badge
+   * report names) can be dropped without an import cycle. Failures are logged
+   * and never fail the region save itself.
+   */
+  setRegionChangeHandler(handler: ((accountId: string) => Promise<void>) | null): void {
+    this.regionChangeHandler = handler;
+    SteamArkLog.debug(TAG, 'region change handler ' + (handler === null ? 'cleared' : 'configured'));
+  }
+
+  private async notifyRegionChangeHandlers(accountId: string): Promise<void> {
+    const handler = this.regionChangeHandler;
+    if (handler === null) {
+      return;
+    }
+    try {
+      await handler(accountId);
+    } catch (error) {
+      SteamArkLog.warn(TAG, 'region change cache cleanup failed; account=' +
+        SteamArkLog.accountId(accountId) + ', errorType=' + SteamArkLog.errorKind(error));
+    }
   }
 
   setAccountLifecycle(lifecycle: ISteamArkAccountLifecycle | null): void {
@@ -2393,6 +2474,202 @@ export class SteamArkStateService {
     );
   }
 
+  /**
+   * Persists the subset of farming preferences exposed by the product UI.
+   * This deliberately does not stop or reconfigure a live farming runtime.
+   */
+  async saveFarmingSettings(
+    accountId: string,
+    update: SteamArkFarmingSettingsUpdate
+  ): Promise<boolean> {
+    return await this.runAccountOperation<boolean>(
+      accountId,
+      async (): Promise<boolean> => await this.saveFarmingSettingsInternal(accountId, update)
+    );
+  }
+
+  /**
+   * Replaces the local planning lists (blacklist / priority queue). Effects are
+   * durable immediately but only affect the next farming plan, matching the
+   * farming settings save semantics.
+   */
+  async saveFarmingLists(
+    accountId: string,
+    update: SteamArkFarmingListsUpdate
+  ): Promise<boolean> {
+    return await this.runAccountOperation<boolean>(
+      accountId,
+      async (): Promise<boolean> => await this.saveFarmingListsInternal(accountId, update)
+    );
+  }
+
+  private async saveFarmingListsInternal(
+    accountId: string,
+    update: SteamArkFarmingListsUpdate
+  ): Promise<boolean> {
+    await this.requireInitialized();
+    const normalizedId: string = accountId.trim();
+    const record = this.records.get(normalizedId);
+    if (record === undefined || this.isTemporaryQrRecord(record)) {
+      SteamArkLog.warn(TAG, 'farming lists save rejected; account unavailable');
+      return false;
+    }
+    this.validateAppIdList(update.blacklist);
+    this.validateAppIdList(update.priorityAppIds);
+    const previousRecord: SteamArkAccountRecord = this.copyRecord(record);
+    try {
+      record.config.blacklist = update.blacklist.slice();
+      record.config.priorityAppIds = update.priorityAppIds.slice();
+      await this.persistState();
+      this.notifyListeners();
+      SteamArkLog.info(TAG, 'farming lists saved; account=' + SteamArkLog.accountId(normalizedId) +
+        ', blacklist=' + update.blacklist.length.toString() +
+        ', priorityQueue=' + update.priorityAppIds.length.toString());
+      return true;
+    } catch (error) {
+      const normalized = error instanceof Error ? error : new Error('Steam farming lists save failed');
+      this.restoreRecord(record, previousRecord);
+      try {
+        await this.persistState();
+      } catch (rollbackError) {
+        SteamArkLog.error(TAG, 'farming lists rollback persistence failed; account=' +
+          SteamArkLog.accountId(normalizedId) + ', errorType=' + SteamArkLog.errorKind(rollbackError));
+      }
+      this.notifyListeners();
+      SteamArkLog.warn(TAG, 'farming lists save rolled back; account=' +
+        SteamArkLog.accountId(normalizedId) + ', errorType=' + SteamArkLog.errorKind(normalized));
+      throw normalized;
+    }
+  }
+
+  private validateAppIdList(appIds: Array<string>): void {
+    if (appIds.length > 128) {
+      throw new Error('Steam farming lists support at most 128 AppIDs');
+    }
+    for (let index = 0; index < appIds.length; index++) {
+      const appId: string = appIds[index].trim();
+      if (appId.length <= 0 || Number(appId) <= 0 || !Number.isSafeInteger(Number(appId))) {
+        throw new Error('Steam farming lists accept decimal AppIDs only');
+      }
+    }
+  }
+
+  private async saveFarmingSettingsInternal(
+    accountId: string,
+    update: SteamArkFarmingSettingsUpdate
+  ): Promise<boolean> {
+    await this.requireInitialized();
+    const normalizedId: string = accountId.trim();
+    const record = this.records.get(normalizedId);
+    if (record === undefined || this.isTemporaryQrRecord(record)) {
+      SteamArkLog.warn(TAG, 'farming settings save rejected; account unavailable');
+      return false;
+    }
+    this.validateFarmingSettings(update);
+    const previousRecord: SteamArkAccountRecord = this.copyRecord(record);
+    try {
+      record.config.enabled = update.enabled;
+      record.config.hoursUntilCardDrops = update.hoursUntilCardDrops;
+      record.config.maxGamesPlayedConcurrently = update.maxGamesPlayedConcurrently;
+      record.config.farmingPreferences = update.priorityQueueOnly
+        ? record.config.farmingPreferences | SteamFarmingPreference.FARM_PRIORITY_QUEUE_ONLY
+        : record.config.farmingPreferences & ~SteamFarmingPreference.FARM_PRIORITY_QUEUE_ONLY;
+      await this.persistState();
+      this.notifyListeners();
+      SteamArkLog.info(TAG, 'farming settings saved; account=' + SteamArkLog.accountId(normalizedId) +
+        ', enabled=' + String(update.enabled) +
+        ', maxGames=' + update.maxGamesPlayedConcurrently.toString() +
+        ', dropHours=' + update.hoursUntilCardDrops.toString() +
+        ', priorityOnly=' + String(update.priorityQueueOnly));
+      return true;
+    } catch (error) {
+      const normalized = error instanceof Error ? error : new Error('Steam farming settings save failed');
+      this.restoreRecord(record, previousRecord);
+      try {
+        await this.persistState();
+      } catch (rollbackError) {
+        SteamArkLog.error(TAG, 'farming settings rollback persistence failed; account=' +
+          SteamArkLog.accountId(normalizedId) + ', errorType=' + SteamArkLog.errorKind(rollbackError));
+      }
+      this.notifyListeners();
+      SteamArkLog.warn(TAG, 'farming settings save rolled back; account=' +
+        SteamArkLog.accountId(normalizedId) + ', errorType=' + SteamArkLog.errorKind(normalized));
+      throw normalized;
+    }
+  }
+
+  /**
+   * Persists the per-account Steam content region. Changing the region also
+   * invalidates the account's localized caches so the next sync refetches
+   * inventory, badges and market prices with the new language and currency.
+   */
+  async saveRegion(accountId: string, region: string): Promise<boolean> {
+    return await this.runAccountOperation<boolean>(
+      accountId,
+      async (): Promise<boolean> => await this.saveRegionInternal(accountId, region)
+    );
+  }
+
+  private async saveRegionInternal(accountId: string, region: string): Promise<boolean> {
+    await this.requireInitialized();
+    const normalizedId: string = accountId.trim();
+    const record = this.records.get(normalizedId);
+    if (record === undefined || this.isTemporaryQrRecord(record)) {
+      SteamArkLog.warn(TAG, 'region save rejected; account unavailable');
+      return false;
+    }
+    const normalizedRegion: string = region.trim().toUpperCase();
+    if (!SteamArkRegionPolicy.isValid(normalizedRegion)) {
+      SteamArkLog.warn(TAG, 'region save rejected; unsupported region=' + normalizedRegion);
+      return false;
+    }
+    if (record.region === normalizedRegion) {
+      return true;
+    }
+    const previousRecord: SteamArkAccountRecord = this.copyRecord(record);
+    try {
+      record.region = normalizedRegion;
+      this.clearInventoryStateForRegionChange(normalizedId);
+      SteamArkMarketPriceService.clearCachedAccount(normalizedId);
+      await this.notifyRegionChangeHandlers(normalizedId);
+      await this.persistState();
+      this.notifyListeners();
+      SteamArkLog.info(TAG, 'region saved; account=' + SteamArkLog.accountId(normalizedId) +
+        ', region=' + normalizedRegion);
+      return true;
+    } catch (error) {
+      const normalized = error instanceof Error ? error : new Error('Steam region save failed');
+      this.restoreRecord(record, previousRecord);
+      try {
+        await this.persistState();
+      } catch (rollbackError) {
+        SteamArkLog.error(TAG, 'region rollback persistence failed; account=' +
+          SteamArkLog.accountId(normalizedId) + ', errorType=' + SteamArkLog.errorKind(rollbackError));
+      }
+      this.notifyListeners();
+      SteamArkLog.warn(TAG, 'region save rolled back; account=' +
+        SteamArkLog.accountId(normalizedId) + ', errorType=' + SteamArkLog.errorKind(normalized));
+      throw normalized;
+    }
+  }
+
+  /**
+   * Resolves the effective Steam content localization for an account from its
+   * stored region setting and profile facts. Returns null for unknown accounts.
+   */
+  resolveAccountLocale(accountId: string): SteamArkContentLocale | null {
+    const normalizedId: string = accountId.trim();
+    const record = this.records.get(normalizedId);
+    if (record === undefined || this.isTemporaryQrRecord(record)) {
+      return null;
+    }
+    return SteamArkRegionPolicy.resolve(
+      record.region,
+      record.profile.countryCode,
+      record.profile.walletCurrency
+    );
+  }
+
   private async saveProxyInternal(
     accountId: string,
     proxy: SteamProxySettings,
@@ -2584,10 +2861,50 @@ export class SteamArkStateService {
     if (session.steamId64.length > 0) {
       record.profile.steamId64 = session.steamId64;
     }
+    if (session.state === SteamSessionState.LOGGED_ON) {
+      this.applyWalletFacts(session, record);
+    }
     await this.persistState();
     this.notifyListeners();
     SteamArkLog.debug(TAG, 'session update persisted; account=' + SteamArkLog.accountId(session.accountId));
     return true;
+  }
+
+  /**
+   * Merges the account's own wallet facts delivered by the CM logon response into
+   * the profile. These are the account's home store region signal: AUTO region
+   * resolution and market price currency both follow them.
+   */
+  private applyWalletFacts(session: SteamSessionSnapshot, record: SteamArkAccountRecord): void {
+    if (session.walletCurrency > 0) {
+      const currencyCode: string = SteamArkRegionPolicy.currencyCode(session.walletCurrency);
+      if (currencyCode.length > 0 && currencyCode !== record.profile.walletCurrency) {
+        record.profile.walletCurrency = currencyCode;
+        SteamArkLog.info(TAG, 'account wallet currency applied; account=' +
+          SteamArkLog.accountId(record.profile.accountId) + ', currency=' + currencyCode);
+        // The effective AUTO locale changed; drop localized caches so the next
+        // sync refetches inventory and market prices in the account's own region.
+        this.clearInventoryStateForRegionChange(record.profile.accountId);
+        SteamArkMarketPriceService.clearCachedAccount(record.profile.accountId);
+      }
+    }
+    const walletBalance: string = this.formatWalletBalance(session.walletBalance);
+    if (walletBalance.length > 0 && walletBalance !== record.profile.walletBalance) {
+      record.profile.walletBalance = walletBalance;
+    }
+  }
+
+  /** Formats a Steam wallet balance given in minor units (cents) for display. */
+  private formatWalletBalance(cents: string): string {
+    const trimmed: string = cents.trim();
+    if (trimmed.length <= 0) {
+      return '';
+    }
+    const value: number = Number(trimmed);
+    if (!Number.isFinite(value) || value <= 0) {
+      return '';
+    }
+    return (value / 100).toFixed(2);
   }
 
   async getCredentials(accountId: string): Promise<SteamCredentialSet> {
@@ -3067,7 +3384,11 @@ export class SteamArkStateService {
       report,
       false,
       pendingAuth,
-      this.readBoolean(root.getProperty('autoRestoreEnabled'), true)
+      this.readBoolean(root.getProperty('autoRestoreEnabled'), true),
+      0,
+      -1,
+      -1,
+      this.readString(root.getProperty('region'), SteamArkAccountRegion.AUTO)
     );
   }
 
@@ -3184,6 +3505,7 @@ export class SteamArkStateService {
     persisted.countryCode = record.profile.countryCode;
     persisted.walletBalance = record.profile.walletBalance;
     persisted.walletCurrency = record.profile.walletCurrency;
+    persisted.region = record.region;
     persisted.steamId64 = record.profile.steamId64;
     persisted.accountEnabled = record.profile.enabled;
     persisted.autoRestoreEnabled = record.autoRestoreEnabled;
@@ -3321,7 +3643,8 @@ export class SteamArkStateService {
       source.autoRestoreEnabled,
       source.profileRefreshGeneration,
       source.profileRefreshRetryGeneration,
-      source.profileRefreshRetryPendingGeneration
+      source.profileRefreshRetryPendingGeneration,
+      source.region
     );
   }
 
@@ -3336,6 +3659,7 @@ export class SteamArkStateService {
     target.profileRefreshGeneration = source.profileRefreshGeneration;
     target.profileRefreshRetryGeneration = source.profileRefreshRetryGeneration;
     target.profileRefreshRetryPendingGeneration = source.profileRefreshRetryPendingGeneration;
+    target.region = source.region;
   }
 
   private async stopAccountActivity(accountId: string, removeFarming: boolean): Promise<void> {
@@ -3474,6 +3798,24 @@ export class SteamArkStateService {
       this.inventoryPages.delete(keys[index]);
     }
     this.latestInventoryPages.delete(accountId.trim());
+  }
+
+  private clearInventoryStateForRegionChange(accountId: string): void {
+    const normalizedId: string = accountId.trim();
+    if (normalizedId.length <= 0) {
+      return;
+    }
+    this.latestInventoryPages.delete(normalizedId);
+    const keys: Array<string> = [];
+    this.inventoryPages.forEach((_page: SteamInventoryPage, key: string): void => {
+      if (key.indexOf(normalizedId + '|') === 0) {
+        keys.push(key);
+      }
+    });
+    for (let index: number = 0; index < keys.length; index++) {
+      this.inventoryPages.delete(keys[index]);
+    }
+    this.clearPersistedInventoryCache(normalizedId);
   }
 
   private clearPersistedInventoryCache(accountId: string): void {
@@ -4656,7 +4998,9 @@ export class SteamArkStateService {
       source.lastErrorFrameBytes,
       source.lastErrorHeaderBytes,
       source.lastErrorBodyBytes,
-      source.lastErrorServerMessage
+      source.lastErrorServerMessage,
+      source.walletBalance,
+      source.walletCurrency
     );
   }
 
@@ -4720,7 +5064,8 @@ export class SteamArkStateService {
         record.migrationReport.importedAtEpochSeconds
       ),
       record.hasCredentialMaterial,
-      this.copyPendingAuth(record.pendingAuth)
+      this.copyPendingAuth(record.pendingAuth),
+      record.region
     );
   }
 
@@ -4742,7 +5087,9 @@ export class SteamArkStateService {
       source.lastErrorFrameBytes,
       source.lastErrorHeaderBytes,
       source.lastErrorBodyBytes,
-      source.lastErrorServerMessage
+      source.lastErrorServerMessage,
+      source.walletBalance,
+      source.walletCurrency
     );
   }
 
@@ -5322,6 +5669,17 @@ export class SteamArkStateService {
     }
     if (!Number.isSafeInteger(proxy.port) || proxy.port < 1 || proxy.port > 65535) {
       throw new Error('proxy port is invalid');
+    }
+  }
+
+  private validateFarmingSettings(update: SteamArkFarmingSettingsUpdate): void {
+    if (!Number.isSafeInteger(update.hoursUntilCardDrops) || update.hoursUntilCardDrops < 0 ||
+      update.hoursUntilCardDrops > 255) {
+      throw new Error('Steam farming drop-hour threshold must be an integer between 0 and 255');
+    }
+    if (!Number.isSafeInteger(update.maxGamesPlayedConcurrently) ||
+      update.maxGamesPlayedConcurrently < 1 || update.maxGamesPlayedConcurrently > 32) {
+      throw new Error('Steam farming concurrent-game limit must be an integer between 1 and 32');
     }
   }
 

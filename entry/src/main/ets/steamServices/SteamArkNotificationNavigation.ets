@@ -5,6 +5,7 @@ export const STEAM_ARK_NOTIFICATION_FRIEND_ID_KEY: string = 'steam_ark_notificat
 export const STEAM_ARK_NOTIFICATION_MESSAGE_ID_KEY: string = 'steam_ark_notification_message_id';
 export const STEAM_ARK_NOTIFICATION_ACTION_OPEN_CHAT: string = 'open_chat';
 export const STEAM_ARK_NOTIFICATION_ACTION_OPEN_MESSAGE: string = 'open_message';
+export const STEAM_ARK_NOTIFICATION_ACTION_OPEN_FARMING: string = 'open_farming';
 
 export class SteamArkNotificationChatLaunchRequest {
   readonly accountId: string;
@@ -26,6 +27,14 @@ export class SteamArkNotificationMessageLaunchRequest {
   }
 }
 
+export class SteamArkNotificationFarmingLaunchRequest {
+  readonly accountId: string;
+
+  constructor(accountId: string) {
+    this.accountId = accountId.trim();
+  }
+}
+
 export class SteamArkNotificationNavigation {
   static createOpenChatParameters(accountId: string, friendSteamId64: string): Record<string, Object> {
     const parameters: Record<string, Object> = {};
@@ -40,6 +49,13 @@ export class SteamArkNotificationNavigation {
     parameters[STEAM_ARK_NOTIFICATION_ACTION_KEY] = STEAM_ARK_NOTIFICATION_ACTION_OPEN_MESSAGE;
     parameters[STEAM_ARK_NOTIFICATION_ACCOUNT_ID_KEY] = accountId.trim();
     parameters[STEAM_ARK_NOTIFICATION_MESSAGE_ID_KEY] = messageId.trim();
+    return parameters;
+  }
+
+  static createOpenFarmingParameters(accountId: string): Record<string, Object> {
+    const parameters: Record<string, Object> = {};
+    parameters[STEAM_ARK_NOTIFICATION_ACTION_KEY] = STEAM_ARK_NOTIFICATION_ACTION_OPEN_FARMING;
+    parameters[STEAM_ARK_NOTIFICATION_ACCOUNT_ID_KEY] = accountId.trim();
     return parameters;
   }
 
@@ -91,6 +107,27 @@ export class SteamArkNotificationNavigation {
       return null;
     }
     return new SteamArkNotificationMessageLaunchRequest(accountId, messageId);
+  }
+
+  static readOpenFarmingRequest(parameters: Record<string, Object> | undefined): SteamArkNotificationFarmingLaunchRequest | null {
+    if (parameters === undefined) {
+      return null;
+    }
+    const action: string = SteamArkNotificationNavigation.readString(
+      parameters,
+      STEAM_ARK_NOTIFICATION_ACTION_KEY
+    );
+    if (action !== STEAM_ARK_NOTIFICATION_ACTION_OPEN_FARMING) {
+      return null;
+    }
+    const accountId: string = SteamArkNotificationNavigation.readString(
+      parameters,
+      STEAM_ARK_NOTIFICATION_ACCOUNT_ID_KEY
+    );
+    if (accountId.length <= 0) {
+      return null;
+    }
+    return new SteamArkNotificationFarmingLaunchRequest(accountId);
   }
 
   private static readString(parameters: Record<string, Object>, key: string): string {

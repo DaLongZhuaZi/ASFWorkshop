@@ -124,6 +124,10 @@ export class WebSocketClientFacade implements IWebSocketClient {
   }
 
   async close(code: number = 1000, reason: string = ''): Promise<void> {
+    if (this.currentState === NGFWebSocketState.CLOSING) {
+      // A close is already in flight; calling the native close again throws.
+      return;
+    }
     this.connectionGeneration++;
     if (this.socket === null || this.currentState === NGFWebSocketState.CLOSED || this.currentState === NGFWebSocketState.IDLE) {
       this.setState(NGFWebSocketState.CLOSED);
@@ -134,6 +138,7 @@ export class WebSocketClientFacade implements IWebSocketClient {
     try {
       await socket.close({ code, reason });
     } finally {
+      this.unbindNativeListeners(socket);
       this.setState(NGFWebSocketState.CLOSED);
       if (this.socket === socket) {
         this.socket = null;
@@ -208,6 +213,7 @@ export class WebSocketClientFacade implements IWebSocketClient {
         this.closeListeners[index](closeEvent);
       }
       this.socket = null;
+      this.unbindNativeListeners(socket);
       this.setState(NGFWebSocketState.CLOSED);
     });
     socket.on('error', (error: BusinessError): void => {
@@ -217,6 +223,7 @@ export class WebSocketClientFacade implements IWebSocketClient {
       this.connectionGeneration++;
       this.setState(NGFWebSocketState.ERROR);
       this.notifyError(error);
+      this.unbindNativeListeners(socket);
     });
   }
 
@@ -229,6 +236,19 @@ export class WebSocketClientFacade implements IWebSocketClient {
       await socket.close({ code: 1000, reason: 'Connection failed' });
     } catch (_error) {
       logger.debug(TAG, 'WebSocket cleanup after connection failure failed');
+    }
+    this.unbindNativeListeners(socket);
+  }
+
+  /** Pairs the native on() registrations from bindNativeListeners. */
+  private unbindNativeListeners(socket: webSocket.WebSocket): void {
+    try {
+      socket.off('open');
+      socket.off('message');
+      socket.off('close');
+      socket.off('error');
+    } catch (_error) {
+      logger.debug(TAG, 'WebSocket native listener unbind failed');
     }
   }
 

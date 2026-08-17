@@ -1,4 +1,5 @@
 import { SteamAccountProfile, SteamCredentialSet } from 'steam_core';
+import { SteamArkContentLocale } from './SteamArkRegionPolicy';
 
 export enum SteamArkMessageCategory {
   SYSTEM = 'system',
@@ -75,7 +76,8 @@ export interface ISteamArkMessageResolver {
   resolve(
     profile: SteamAccountProfile,
     credentials: SteamCredentialSet,
-    proxyPassword: string
+    proxyPassword: string,
+    locale?: SteamArkContentLocale | null
   ): Promise<SteamArkMessageSyncResult>;
   markRead(profile: SteamAccountProfile, credentials: SteamCredentialSet,
     proxyPassword: string, item: SteamArkMessageItem): Promise<void>;

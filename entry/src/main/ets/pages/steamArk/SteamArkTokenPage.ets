@@ -60,6 +60,7 @@ export struct SteamArkTokenPage {
   @State private loading: boolean = false;
   @StorageProp('ngf_is_dark_mode') private isDarkMode: boolean = false;
   @StorageProp('steam_ark_profile_background_url') private profileBackgroundUrl: string = '';
+  @StorageProp('steam_ark_profile_background_enabled') private backgroundEnabled: boolean = true;
   @StorageProp('ngf_visual_effects_should_use_system_material_surface') private useSysMat: boolean = true;
   private readonly scroller: Scroller = steamArkTabScrollers.tokens;
   private isPageActive: boolean = false;
@@ -132,7 +133,7 @@ export struct SteamArkTokenPage {
           true,
           false
         ))
-        .backgroundImage(this.profileBackgroundUrl)
+        .backgroundImage(this.backgroundEnabled ? this.profileBackgroundUrl : '')
         .backgroundImageSize(ImageSize.Cover)
         .ignoreLayoutSafeArea([LayoutSafeAreaType.SYSTEM], [LayoutSafeAreaEdge.TOP, LayoutSafeAreaEdge.BOTTOM])
         .bindToScrollable([this.scroller])
@@ -180,13 +181,18 @@ export struct SteamArkTokenPage {
             });
         }
           .width('100%')
-          .padding({ left: 16, right: 16, top: this.embedded ? this.contentTopInsetVp : this.topInsetVp, bottom: this.embedded ? 84 : 92 });
+          .padding({ left: 16, right: 16, top: this.embedded ? this.contentTopInsetVp : this.topInsetVp, bottom: this.embedded ? 84 + SteamArkExperiencePolicy.FRIENDS_BAR_RESERVE : 92 });
       }
         .width('100%')
         .height('100%')
         .scrollBar(BarState.Off)
         .edgeEffect(EdgeEffect.Spring)
-        .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM]);
+        .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+        .onDidScroll((_xOffset: number, yOffset: number): void => {
+          if (this.embedded) {
+            steamArkTabScrollers.notifyScrollDelta(yOffset);
+          }
+        });
     }
       .width('100%')
       .height('100%')

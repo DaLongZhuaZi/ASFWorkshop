@@ -46,7 +46,7 @@ export class NetworkManagerFacade implements INetworkClient {
       Object.keys(req.headers).forEach(k => { reqHeaders[k] = (req.headers as Record<string, string>)[k]; });
     }
     
-    logger.info(TAG, '发起网络请求 [' + methodStr + '] ' + url);
+    logger.info(TAG, '发起网络请求 [' + methodStr + '] ' + NetworkManagerFacade.logSafeUrl(url));
 
     const rcpReq = new rcp.Request(url, methodStr, reqHeaders, req.body);
     
@@ -76,7 +76,7 @@ export class NetworkManagerFacade implements INetworkClient {
 
       const bodyStr = rcpRes.toString() || '';
       
-      logger.info(TAG, '网络请求完成 [' + methodStr + '] ' + url + ' - Status: ' + rcpRes.statusCode);
+      logger.info(TAG, '网络请求完成 [' + methodStr + '] ' + NetworkManagerFacade.logSafeUrl(url) + ' - Status: ' + rcpRes.statusCode);
       
       return {
         statusCode: rcpRes.statusCode,
@@ -84,10 +84,16 @@ export class NetworkManagerFacade implements INetworkClient {
         body: bodyStr
       };
     } catch (e) {
-      const err = e as Error;
-      logger.error(TAG, '网络请求异常 [' + methodStr + '] ' + url + ' - ' + err.message);
+      const err = e instanceof Error ? e : new Error(String(e));
+      logger.error(TAG, '网络请求异常 [' + methodStr + '] ' + NetworkManagerFacade.logSafeUrl(url) + ' - ' + err.message);
       throw err;
     }
+  }
+
+  /** Strips the query string so tokens in URLs never reach the log. */
+  private static logSafeUrl(url: string): string {
+    const queryIndex = url.indexOf('?');
+    return queryIndex >= 0 ? url.substring(0, queryIndex) : url;
   }
 
   async get(url: string, headers?: Record<string, string>): Promise<NGFNetworkResponse> {

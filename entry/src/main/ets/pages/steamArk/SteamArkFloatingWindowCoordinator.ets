@@ -14,19 +14,21 @@ import {
 
 export const STEAM_ARK_FLOAT_ACCOUNT_KEY: string = 'steam_ark_float_account_id';
 export const STEAM_ARK_FLOAT_FRIEND_KEY: string = 'steam_ark_float_friend_id';
+/** Sub-window name shared with the friends page for anchored pop animations. */
+export const STEAM_ARK_FRIENDS_WINDOW_NAME: string = 'steam_ark_friends_float';
+/** Screen-space capsule anchor (px) the friends window pops out of and into. */
+export const STEAM_ARK_FRIENDS_ANCHOR_X_PX: string = 'steam_ark_friends_anchor_x_px';
+export const STEAM_ARK_FRIENDS_ANCHOR_Y_PX: string = 'steam_ark_friends_anchor_y_px';
 
 const TAG: string = 'FloatingWindowCoordinator';
-const STATUS_WINDOW_NAME: string = 'steam_ark_status_ball';
-const FRIENDS_WINDOW_NAME: string = 'steam_ark_friends_float';
+const FRIENDS_WINDOW_NAME: string = STEAM_ARK_FRIENDS_WINDOW_NAME;
 const CHAT_WINDOW_NAME: string = 'steam_ark_chat_float';
 const STATE_LISTENER_ID: string = 'SteamArkFloatingWindowCoordinator';
 const POSITION_PREFIX: string = 'steam_ark_float_position_v1_';
 const INVALID_POSITION: number = -1;
-const STATUS_EDGE: number = 24;
 const PANEL_EDGE: number = 24;
 
 enum SteamArkFloatingWindowKind {
-  STATUS = 'status',
   FRIENDS = 'friends',
   CHAT = 'chat'
 }
@@ -34,10 +36,8 @@ enum SteamArkFloatingWindowKind {
 type SteamArkFloatingWindowOperation = () => Promise<void>;
 
 class SteamArkFloatingWindowCoordinator {
-  private statusPrepared: boolean = false;
   private friendsPrepared: boolean = false;
   private chatPrepared: boolean = false;
-  private statusWindow: window.Window | null = null;
   private friendsWindow: window.Window | null = null;
   private chatWindow: window.Window | null = null;
   private friendsAccountId: string = '';
@@ -46,40 +46,19 @@ class SteamArkFloatingWindowCoordinator {
   private selectedAccountId: string = '';
   private accountScopeGeneration: number = 0;
   private stateListenerRegistered: boolean = false;
+  private friendsShown: boolean = false;
+  /**
+   * Direct animation handles registered by the friends page (same process, so
+   * plain function references work across windows — reactive AppStorage
+   * signalling proved unreliable here). Present plays the capsule pop after
+   * showWindow; collapse animates back and resolves when finished.
+   */
+  private friendsPresentHandler: (() => boolean) | null = null;
+  private friendsCollapseHandler: (() => Promise<void>) | null = null;
   private windowOperationTail: Promise<void> = Promise.resolve();
   private readonly stateListener: SteamArkStateListener = (snapshot: SteamArkStateSnapshot): void => {
     this.applySelectedAccountScope(snapshot.selectedAccountId);
   };
-
-  async showStatusBall(): Promise<void> {
-    this.ensureStateListener();
-    try {
-      const target: window.Window = await ngfPlatformWindowManagerFacade.createSubWindow(STATUS_WINDOW_NAME);
-      this.statusWindow = target;
-      if (!this.statusPrepared) {
-        await target.setUIContent('pages/steamArk/SteamArkStatusBallPage');
-        this.applyTransparentBackground(target, SteamArkFloatingWindowKind.STATUS);
-        this.statusPrepared = true;
-      }
-      await target.resize(176, 176);
-      await this.restoreOrAnchor(target, SteamArkFloatingWindowKind.STATUS, 176, 176, STATUS_EDGE);
-      await target.showWindow();
-      SteamArkLog.info(TAG, 'global status ball shown');
-    } catch (error) {
-      this.statusPrepared = false;
-      SteamArkLog.warn(TAG, 'global status ball unavailable; errorType=' + SteamArkLog.errorKind(error));
-    }
-  }
-
-  async repositionStatusBall(): Promise<void> {
-    try {
-      const target: window.Window = await ngfPlatformWindowManagerFacade.createSubWindow(STATUS_WINDOW_NAME);
-      this.statusWindow = target;
-      await this.restoreOrAnchor(target, SteamArkFloatingWindowKind.STATUS, 176, 176, STATUS_EDGE);
-    } catch (error) {
-      SteamArkLog.warn(TAG, 'status ball reposition failed; errorType=' + SteamArkLog.errorKind(error));
-    }
-  }
 
   async openFriends(accountId: string): Promise<void> {
     this.ensureStateListener();
@@ -132,6 +111,8 @@ class SteamArkFloatingWindowCoordinator {
         return;
       }
       this.friendsAccountId = accountId;
+      this.friendsShown = true;
+      await this.driveFriendsPresent(scopeGeneration);
     } catch (error) {
       this.friendsPrepared = false;
       this.friendsWindow = null;
@@ -211,8 +192,85 @@ class SteamArkFloatingWindowCoordinator {
 
   async closeFriends(): Promise<void> {
     await this.enqueueWindowOperation(async (): Promise<void> => {
-      await this.closeFriendsInternal();
+      await this.hideFriendsWindowInternal();
     });
+  }
+
+  /** True while the friends window surface is on screen (capsule toggle). */
+  isFriendsWindowShown(): boolean {
+    return this.friendsShown;
+  }
+
+  setFriendsPresentHandler(handler: (() => boolean) | null): void {
+    this.friendsPresentHandler = handler;
+  }
+
+  setFriendsCollapseHandler(handler: (() => Promise<void>) | null): void {
+    this.friendsCollapseHandler = handler;
+  }
+
+  /**
+   * Drives the capsule pop after showWindow. The first open can race the
+   * page's initial load (handler not yet registered or the page not yet
+   * active), so the present handle is retried until the page confirms the
+   * pop played — never leaving a bare window surface on screen.
+   */
+  private async driveFriendsPresent(scopeGeneration: number): Promise<void> {
+    for (let attempt: number = 0; attempt < 14; attempt++) {
+      if (!this.friendsShown || !this.isCurrentAccountScope(this.friendsAccountId, scopeGeneration)) {
+        return;
+      }
+      const handler: (() => boolean) | null = this.friendsPresentHandler;
+      if (handler !== null) {
+        try {
+          if (handler()) {
+            return;
+          }
+        } catch (error) {
+          SteamArkLog.debug(TAG, 'friends capsule pop attempt failed; errorType=' +
+            SteamArkLog.errorKind(error));
+        }
+      }
+      await this.delayForPresentRetry();
+    }
+    SteamArkLog.warn(TAG, 'friends capsule pop was not confirmed; window will be hidden');
+    await this.hideFriendsWindowInternal();
+  }
+
+  private delayForPresentRetry(): Promise<void> {
+    return new Promise<void>((resolve: () => void): void => {
+      setTimeout(resolve, 120);
+    });
+  }
+  async hideFriendsWindow(): Promise<void> {
+    await this.enqueueWindowOperation(async (): Promise<void> => {
+      await this.hideFriendsWindowInternal();
+    });
+  }
+
+  private async hideFriendsWindowInternal(): Promise<void> {
+    if (!this.friendsShown || this.friendsWindow === null) {
+      return;
+    }
+    this.friendsShown = false;
+    if (this.friendsCollapseHandler !== null) {
+      try {
+        await this.friendsCollapseHandler();
+      } catch (error) {
+        SteamArkLog.debug(TAG, 'friends capsule collapse failed; errorType=' + SteamArkLog.errorKind(error));
+      }
+    }
+    try {
+      // API 26 renamed the instance hide call to minimize(); it detaches the
+      // window surface (and its touch area) right away.
+      await this.friendsWindow.minimize();
+    } catch (error) {
+      // Minimize can be rejected on some device forms — fall back to a full
+      // destroy so the surface never lingers; the next open recreates it.
+      SteamArkLog.debug(TAG, 'friends window minimize rejected; falling back to destroy; errorType=' +
+        SteamArkLog.errorKind(error));
+      await this.closeFriendsInternal();
+    }
   }
 
   async closeFriendsForAccount(accountId: string): Promise<void> {
@@ -226,10 +284,23 @@ class SteamArkFloatingWindowCoordinator {
   }
 
   private async closeFriendsInternal(): Promise<void> {
+    const windowAlive: boolean = this.friendsPrepared || this.friendsWindow !== null;
+    const target: window.Window | null = this.friendsWindow;
     this.friendsPrepared = false;
     this.friendsWindow = null;
     this.friendsAccountId = '';
+    this.friendsShown = false;
+    this.friendsPresentHandler = null;
+    this.friendsCollapseHandler = null;
     try {
+      if (windowAlive && target !== null) {
+        try {
+          await target.minimize();
+        } catch (hideError) {
+          SteamArkLog.debug(TAG, 'friends floating window minimize before destroy failed; errorType=' +
+            SteamArkLog.errorKind(hideError));
+        }
+      }
       await ngfPlatformWindowManagerFacade.destroySubWindow(FRIENDS_WINDOW_NAME);
     } catch (error) {
       SteamArkLog.warn(TAG, 'friends floating window close failed; errorType=' + SteamArkLog.errorKind(error));
@@ -320,10 +391,8 @@ class SteamArkFloatingWindowCoordinator {
 
   private invalidateWindowRuntime(): void {
     this.accountScopeGeneration++;
-    this.statusPrepared = false;
     this.friendsPrepared = false;
     this.chatPrepared = false;
-    this.statusWindow = null;
     this.friendsWindow = null;
     this.chatWindow = null;
     this.friendsAccountId = '';
@@ -409,14 +478,6 @@ class SteamArkFloatingWindowCoordinator {
       Math.min(880, Math.max(360, availableWidth - 96)),
       Math.min(1320, Math.max(640, availableHeight - 240))
     );
-  }
-
-  startStatusBallDrag(): void {
-    this.startDrag(this.statusWindow, SteamArkFloatingWindowKind.STATUS);
-  }
-
-  finishStatusBallDrag(): void {
-    void this.finishDrag(this.statusWindow, SteamArkFloatingWindowKind.STATUS, STATUS_EDGE);
   }
 
   startFriendsDrag(): void {

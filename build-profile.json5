@@ -3,6 +3,7 @@
     "products": [
       {
         "name": "default",
+        "signingConfig": "default",
         "targetSdkVersion": "26.0.0",
         "compatibleSdkVersion": "26.0.0",
         "runtimeOS": "HarmonyOS",
@@ -20,6 +21,21 @@
       },
       {
         "name": "release"
+      }
+    ],
+    "signingConfigs": [
+      {
+        "name": "default",
+        "type": "HarmonyOS",
+        "material": {
+          "certpath": "C:\\Users\\13359\\.ohos\\config\\default_ASFWorkshop_OfM5JkWPS638nhgnRJQOsZ44NXVxNXXpNAZOx35olJM=.cer",
+          "keyAlias": "debugKey",
+          "keyPassword": "0000001B134E774A33011CD72848416A4ABE628ADF734C29E8013576E408A1492E6E2968A4C199947EAA15",
+          "profile": "C:\\Users\\13359\\.ohos\\config\\default_ASFWorkshop_OfM5JkWPS638nhgnRJQOsZ44NXVxNXXpNAZOx35olJM=.p7b",
+          "signAlg": "SHA256withECDSA",
+          "storeFile": "C:\\Users\\13359\\.ohos\\config\\default_ASFWorkshop_OfM5JkWPS638nhgnRJQOsZ44NXVxNXXpNAZOx35olJM=.p12",
+          "storePassword": "0000001BCE5746F78A3661224BE169F186AA6ED3FDC5E27B9A04E3CD783DD13CD167877969AF8FAA6BFDD2"
+        }
       }
     ]
   },

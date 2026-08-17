@@ -5325,6 +5325,10 @@
       "value": "SOCKS5"
     },
     {
+      "name": "steam_network_socks5_warning",
+      "value": "SOCKS5 代理暂不支持 Steam CM（WebSocket）连接：登录、挂卡等依赖 CM 的功能将无法使用；网页与商店类功能仍可正常使用。"
+    },
+    {
       "name": "steam_network_host_placeholder",
       "value": "代理主机"
     },
@@ -5437,6 +5441,10 @@
       "value": "文件解析或安全保存失败，未完成导入。"
     },
     {
+      "name": "steam_accounts_import_read_failed",
+      "value": "无法读取所选文件，请确认文件未损坏或未被占用后重试。"
+    },
+    {
       "name": "steam_inventory_selected_account",
       "value": "当前账号"
     },
@@ -5518,7 +5526,7 @@
     },
     {
       "name": "steam_accounts_auth_busy",
-      "value": "正在处理认证请求..."
+      "value": "正在处理认证请求，请等待30-90秒"
     },
     {
       "name": "steam_accounts_auth_success",
@@ -6205,10 +6213,6 @@
       "value": "ASF工坊"
     },
     {
-      "name": "steam_home_subtitle",
-      "value": "Steam 原生工作台"
-    },
-    {
       "name": "steam_home_tab_overview",
       "value": "总览"
     },
@@ -6231,6 +6235,10 @@
     {
       "name": "steam_home_tab_settings",
       "value": "设置"
+    },
+    {
+      "name": "steam_home_tab_library",
+      "value": "游戏库"
     },
     {
       "name": "steam_home_overview_title",
@@ -6765,6 +6773,10 @@
     { "name": "steam_workspace_cards_failed", "value": "卡牌库存同步失败，请稍后重试" },
     { "name": "steam_workspace_cards_empty", "value": "当前账户暂未发现集换式卡牌" },
     { "name": "steam_workspace_badges_empty", "value": "当前账户暂未发现游戏徽章" },
+    { "name": "steam_workspace_badges_uncrafted_title", "value": "未合成徽章" },
+    { "name": "steam_workspace_badges_uncrafted_ready", "value": "卡牌已集齐，可合成徽章" },
+    { "name": "steam_workspace_badges_uncrafted_remaining", "value": "剩余 %1$d 张卡牌掉落" },
+    { "name": "steam_workspace_badges_uncrafted_empty", "value": "当前账户暂无可合成的徽章" },
     { "name": "steam_workspace_card_amount_prefix", "value": "数量：" },
     { "name": "steam_workspace_badge_level_prefix", "value": "徽章等级：" },
     { "name": "steam_workspace_community_badges_title", "value": "当前账户的社区徽章" },
@@ -6982,5 +6994,264 @@
     ,{ "name": "steam_home_card_farming_cached", "value": "正在显示缓存的可挂卡游戏，后台会自动刷新" }
     ,{ "name": "steam_home_card_assets_refresh_failed", "value": "正在显示缓存资产数据；最近一次刷新失败" }
     ,{ "name": "steam_home_card_farming_refresh_failed", "value": "正在显示缓存的可挂卡游戏；最近一次刷新失败" }
+    ,{ "name": "steam_settings_holding_enabled", "value": "已开启操作适配" }
+    ,{ "name": "steam_settings_farming_account_required", "value": "请先选择已登录账号，再调整挂卡偏好。" }
+    ,{ "name": "steam_settings_farming_priority_queue_only", "value": "仅优先游戏" }
+    ,{ "name": "steam_settings_farming_priority_queue_empty", "value": "当前没有优先游戏；开启后不会自动挂卡。" }
+    ,{ "name": "steam_settings_farming_effective_after_restart", "value": "保存后将在下一次启动挂卡任务时生效。" }
+    ,{ "name": "steam_settings_farming_increase", "value": "增加" }
+    ,{ "name": "steam_settings_farming_decrease", "value": "减少" }
+    ,{ "name": "steam_settings_farming_save", "value": "保存挂卡偏好" }
+    ,{ "name": "steam_settings_farming_saving", "value": "正在保存" }
+    ,{ "name": "steam_settings_farming_saved", "value": "挂卡偏好已保存。" }
+    ,{ "name": "steam_settings_farming_save_failed", "value": "保存失败，请稍后重试。" }
+    ,{ "name": "steam_settings_legal_title", "value": "关于与声明" }
+    ,{ "name": "steam_settings_network_title", "value": "网络与连接" }
+    ,{ "name": "steam_settings_open_about", "value": "关于 ASF工坊" }
+    ,{ "name": "steam_settings_open_user_agreement", "value": "用户协议" }
+    ,{ "name": "steam_settings_open_privacy", "value": "隐私说明" }
+    ,{ "name": "steam_settings_open_open_source", "value": "开源声明" }
+    ,{ "name": "steam_legal_link_failed", "value": "无法打开外部页面，请检查系统浏览器或应用市场是否可用。" }
+    ,{ "name": "steam_legal_link_unavailable", "value": "当前页面无法获取系统链接服务，请稍后重试。" }
+    ,{ "name": "steam_legal_about_title", "value": "关于 ASF工坊" }
+    ,{ "name": "steam_legal_about_subtitle", "value": "Steam 多账号、资产、挂卡与社交伴侣" }
+    ,{ "name": "steam_legal_about_overview_title", "value": "产品说明" }
+    ,{ "name": "steam_legal_about_overview_desc", "value": "ASF工坊为 HarmonyOS NEXT 提供 Steam 多账号、令牌、库存、卡牌、徽章、挂卡、消息、好友与网络诊断工具。部分能力依赖 Steam 服务、网络状态和账号权限，页面会保留缓存并显示实际同步状态。" }
+    ,{ "name": "steam_legal_about_independence_title", "value": "非官方声明" }
+    ,{ "name": "steam_legal_about_independence_desc", "value": "ASF工坊不是 Valve、Steam、SteamKit2 或 ArchiSteamFarm 的官方产品，也不代表或获得其背书。Steam 及相关名称、商标和内容归各自权利人所有。" }
+    ,{ "name": "steam_legal_about_support_title", "value": "赞助开发者" }
+    ,{ "name": "steam_legal_about_support_desc", "value": "赞助完全自愿，用于支持持续维护、兼容性核查与体验改进。赞助不构成购买 Steam 服务、账号权限或任何平台承诺。" }
+    ,{ "name": "steam_legal_about_support_action", "value": "前往爱发电" }
+    ,{ "name": "steam_legal_about_developer_apps_title", "value": "同开发者应用" }
+    ,{ "name": "steam_legal_about_developer_apps_desc", "value": "以下链接将通过系统服务打开华为应用市场，不会向这些页面传递 Steam 会话或账号数据。" }
+    ,{ "name": "steam_legal_about_gallery_action", "value": "在应用市场查看" }
+    ,{ "name": "steam_legal_developer_manxia_name", "value": "漫匣" }
+    ,{ "name": "steam_legal_developer_manxia_desc", "value": "HarmonyOS NEXT 漫画阅读工具" }
+    ,{ "name": "steam_legal_developer_lumabloom_name", "value": "LumaBloom" }
+    ,{ "name": "steam_legal_developer_lumabloom_desc", "value": "同开发者的 HarmonyOS 应用" }
+    ,{ "name": "steam_legal_developer_book_name", "value": "书脉" }
+    ,{ "name": "steam_legal_developer_book_desc", "value": "同开发者的 HarmonyOS 应用" }
+    ,{ "name": "steam_legal_user_title", "value": "用户协议" }
+    ,{ "name": "steam_legal_user_subtitle", "value": "请在使用账号与网络功能前阅读" }
+    ,{ "name": "steam_legal_user_scope_title", "value": "适用范围" }
+    ,{ "name": "steam_legal_user_scope_desc", "value": "你只能添加、导入或管理自己拥有并获授权使用的 Steam 账号和认证材料。请遵守 Steam、华为应用市场及所在地法律法规的服务规则。" }
+    ,{ "name": "steam_legal_user_service_title", "value": "服务依赖" }
+    ,{ "name": "steam_legal_user_service_desc", "value": "登录、资料、库存、挂卡、聊天和通知可能受 Steam 服务端、网络、系统后台限制或账号权限影响。ASF工坊会展示缓存、加载和结构化失败状态，但不能保证第三方服务始终可用。" }
+    ,{ "name": "steam_legal_user_safe_use_title", "value": "安全使用" }
+    ,{ "name": "steam_legal_user_safe_use_desc", "value": "请妥善保管密码、Cookie、验证码、二维码和 maFile。不要从未知来源导入认证文件，也不要向他人共享 shared_secret、identity_secret、访问令牌或刷新令牌。" }
+    ,{ "name": "steam_legal_user_high_risk_title", "value": "高风险操作" }
+    ,{ "name": "steam_legal_user_high_risk_desc", "value": "交易、市场买卖、兑换、资产转移和移动确认等操作由已登录的 Steam 页面承接。请在 Steam 页面自行核对对象、价格和确认内容；ASF工坊不会在原生页面代为执行这些操作。" }
+    ,{ "name": "steam_legal_user_update_title", "value": "更新与变更" }
+    ,{ "name": "steam_legal_user_update_desc", "value": "功能、兼容范围和说明可能随版本更新。继续使用更新后的版本即表示你接受适用于该版本的说明与安全边界。" }
+    ,{ "name": "steam_legal_user_disclaimer_title", "value": "免责声明" }
+    ,{ "name": "steam_legal_user_disclaimer_desc", "value": "1. 本应用按“现状”提供，不构成任何明示或默示担保；挂卡、库存估值与同步结果不构成收益承诺。\n\n2. 使用本应用产生的账号风险（包括但不限于 Steam 账号限制或封禁）由您自行承担。我们不对 Steam 服务变更、网络中断、系统后台限制、第三方服务故障或不可抗力造成的损失承担责任。\n\n3. 您应遵守 Steam 服务条款、华为应用市场规则及所在地法律法规；因您违反上述规则导致的后果由您自行负责。\n\n4. 本应用为独立第三方工具，与 Valve、Steam、SteamKit2 及 ArchiSteamFarm 无隶属关系，亦不代表其官方立场。" }
+    ,{ "name": "steam_legal_privacy_title", "value": "关于ASF工坊与隐私的声明" }
+    ,{ "name": "steam_legal_privacy_subtitle", "value": "更新日期：2026.8.12" }
+    ,{ "name": "steam_legal_privacy_sensitive_title", "value": "1. 我们如何收集和使用您的个人信息" }
+    ,{ "name": "steam_legal_privacy_sensitive_desc", "value": "ASF工坊 是由 周龙溢 （以下简称“我们”）为您提供的，用于Steam账号与库存管理的应用。本隐私声明由我们为处理您的个人信息而制定。\n\n我们非常重视您的个人信息和隐私保护，将会按照法律要求和业界成熟的安全标准，为您的个人信息提供相应的安全保护措施。\n\n我们仅在有合法性基础的情形下才会使用您的个人信息。根据适用的法律，我们可能会基于您的同意、为履行/订立您与我们的合同所必需、履行法定义务所必需等合法性基础，使用您的个人信息。\n\n1.1 我们为您提供下述Steam账号与库存管理在您使用相关业务的过程中，我们会处理所必需的信息，以便订立合同若您不提供相关信息，会影响到您使用本应用的相关功能/服务。\n\n为了实现应用功能，在获取您的同意后我们需要收集您的网络类型 。" }
+    ,{ "name": "steam_legal_privacy_cache_title", "value": "2. 设备权限调用" }
+    ,{ "name": "steam_legal_privacy_cache_desc", "value": "运动数据（读取用户当前的运动状态）\n\n实现智感握姿功能" }
+    ,{ "name": "steam_legal_privacy_network_title", "value": "3. 管理您的个人信息" }
+    ,{ "name": "steam_legal_privacy_network_desc", "value": "如您对您的数据主体权利有进一步要求或存在任何疑问、意见或建议，可通过本声明中“如何联系我们”章节中所述方式与我们取得联系，并行使您的相关权利。" }
+    ,{ "name": "steam_legal_privacy_system_title", "value": "4. 信息存储地点及期限" }
+    ,{ "name": "steam_legal_privacy_system_desc", "value": "4.1 我们承诺，除法律法规另有规定外，我们对您的信息的保存期限应当为实现处理目的所必要的最短时间。\n\n4.2 上述信息将会传输并保存至中国境内的服务器。" }
+    ,{ "name": "steam_legal_privacy_choice_title", "value": "5. 如何联系我们" }
+    ,{ "name": "steam_legal_privacy_choice_desc", "value": "您可通过以下方式联系我们，并行使您的相关权利，我们会尽快回复。\n\n邮箱：1335941759@qq.com\n\n如果您对我们的回复不满意, 特别是当个人信息处理行为损害了您的合法权益时您还可以通过向有管辖权的人民法院提起诉讼、向行业自律协会或政府相关管理机构投诉等外部途径进行解决。 您也可以向我们了解可能适用的相关投诉途径的信息。\n\n生效日期：2026.8.12" }
+    ,{ "name": "steam_legal_source_title", "value": "开源声明" }
+    ,{ "name": "steam_legal_source_subtitle", "value": "许可证、核心库与商标说明" }
+    ,{ "name": "steam_legal_source_app_title", "value": "ASF工坊与 NGF 框架" }
+    ,{ "name": "steam_legal_source_app_desc", "value": "ASF工坊应用层与内置 NGF 框架按 MIT License 发布。完整许可证文本以项目仓库中的 LICENSE 文件为准。" }
+    ,{ "name": "steam_legal_source_core_title", "value": "OpenHarmonyASF 核心库" }
+    ,{ "name": "steam_legal_source_core_desc", "value": "OpenHarmonyASF 子模块及 steam_core HAR 按 Apache License 2.0 发布。它提供平台无关的 Steam/ASF 协议、导入、令牌与挂卡核心能力。" }
+    ,{ "name": "steam_legal_source_trademark_title", "value": "商标与第三方名称" }
+    ,{ "name": "steam_legal_source_trademark_desc", "value": "Steam、Valve、SteamKit2 和 ArchiSteamFarm 等名称仅用于说明兼容行为、依赖边界和参考来源，不表示隶属、授权或背书。" }
+    ,{ "name": "steam_legal_source_thirdparty_title", "value": "第三方参考与依赖" }
+    ,{ "name": "steam_legal_source_thirdparty_desc", "value": "本应用参考了以下开源项目的协议行为与实现思路，完整许可证文本见对应项目仓库：\n\n1. SteamKit2（SteamRE，LGPL-2.1）：Steam 网络协议行为参考。\n\n2. protobuf-net（Apache License 2.0）：SteamKit2 的依赖库。\n\n3. @ohos/hypium、@ohos/hamock（Apache License 2.0）：HarmonyOS 单元测试依赖。" }
+    ,{ "name": "steam_legal_source_repositories_title", "value": "源码仓库" }
+    ,{ "name": "steam_legal_source_repositories_desc", "value": "源码、许可证、变更记录和安全说明以以下公开仓库为准。" }
+    ,{ "name": "steam_legal_source_workshop_repo", "value": "ASF工坊源码" }
+    ,{ "name": "steam_legal_source_core_repo", "value": "OpenHarmonyASF 核心库" }
+    ,{ "name": "steam_settings_region_title", "value": "账号区服" }
+    ,{ "name": "steam_settings_region_desc", "value": "库存、徽章、卡牌、消息与市场价格的语言和货币单位将按区服获取。" }
+    ,{ "name": "steam_settings_region_account_required", "value": "请先选择已登录账号，再设置区服。" }
+    ,{ "name": "steam_settings_region_auto", "value": "自动" }
+    ,{ "name": "steam_settings_region_cn", "value": "中国 · ¥" }
+    ,{ "name": "steam_settings_region_tw", "value": "中国台湾 · NT$" }
+    ,{ "name": "steam_settings_region_hk", "value": "中国香港 · HK$" }
+    ,{ "name": "steam_settings_region_jp", "value": "日本 · ¥" }
+    ,{ "name": "steam_settings_region_kr", "value": "韩国 · ₩" }
+    ,{ "name": "steam_settings_region_us", "value": "美国 · $" }
+    ,{ "name": "steam_settings_region_eu", "value": "欧洲 · €" }
+    ,{ "name": "steam_settings_region_gb", "value": "英国 · £" }
+    ,{ "name": "steam_settings_region_ru", "value": "俄罗斯 · ₽" }
+    ,{ "name": "steam_settings_region_br", "value": "巴西 · R$" }
+    ,{ "name": "steam_settings_region_effective", "value": "当前生效" }
+    ,{ "name": "steam_settings_region_save", "value": "保存区服" }
+    ,{ "name": "steam_settings_region_saving", "value": "正在保存" }
+    ,{ "name": "steam_settings_region_saved", "value": "区服已保存。" }
+    ,{ "name": "steam_settings_region_save_failed", "value": "保存失败，请稍后重试。" }
+    ,{ "name": "steam_settings_appearance_title", "value": "外观" }
+    ,{ "name": "steam_settings_appearance_desc", "value": "关闭后将保留默认的纯色背景，不再展示 Steam 个人资料背景。" }
+    ,{ "name": "steam_settings_profile_background_label", "value": "使用 Steam 个人资料背景" }
+    ,{ "name": "steam_home_friends_button", "value": "好友" }
+    ,{ "name": "steam_home_card_action_library", "value": "游戏库" }
+    ,{ "name": "steam_library_title", "value": "游戏库" }
+    ,{ "name": "steam_library_subtitle", "value": "当前账户的全部游戏" }
+    ,{ "name": "steam_library_account_empty", "value": "未选择账户" }
+    ,{ "name": "steam_library_metric_games", "value": "游戏" }
+    ,{ "name": "steam_library_metric_favorites", "value": "收藏" }
+    ,{ "name": "steam_library_metric_playtime", "value": "游戏时间(小时)" }
+    ,{ "name": "steam_library_hours_unit", "value": "小时" }
+    ,{ "name": "steam_library_last_played_label", "value": "上次游玩" }
+    ,{ "name": "steam_game_detail_subtitle", "value": "游戏详情" }
+    ,{ "name": "steam_game_detail_open_community", "value": "在社区查看" }
+    ,{ "name": "steam_game_detail_playtime_title", "value": "游玩情况" }
+    ,{ "name": "steam_game_detail_playtime_total", "value": "总时长" }
+    ,{ "name": "steam_game_detail_playtime_two_weeks", "value": "近两周" }
+    ,{ "name": "steam_game_detail_playtime_last_played", "value": "上次游玩" }
+    ,{ "name": "steam_game_detail_achievements_title", "value": "成就" }
+    ,{ "name": "steam_game_detail_achievements_unlocked", "value": "已解锁" }
+    ,{ "name": "steam_game_detail_achievements_locked", "value": "未解锁" }
+    ,{ "name": "steam_game_detail_achievements_empty", "value": "暂无成就数据" }
+    ,{ "name": "steam_game_detail_achievements_expand", "value": "展开全部成就" }
+    ,{ "name": "steam_game_detail_achievements_collapse", "value": "收起" }
+    ,{ "name": "steam_game_detail_achievements_summary_only", "value": "仅显示统计，暂无详细成就数据" }
+    ,{ "name": "steam_game_detail_features_title", "value": "存档与特性" }
+    ,{ "name": "steam_game_detail_cloud_supported", "value": "支持 Steam 云存档" }
+    ,{ "name": "steam_game_detail_cloud_unsupported", "value": "不支持 Steam 云存档" }
+    ,{ "name": "steam_game_detail_about_title", "value": "游戏信息" }
+    ,{ "name": "steam_game_detail_about_developers", "value": "开发商" }
+    ,{ "name": "steam_game_detail_about_publishers", "value": "发行商" }
+    ,{ "name": "steam_game_detail_about_genres", "value": "类型" }
+    ,{ "name": "steam_game_detail_news_title", "value": "新闻" }
+    ,{ "name": "steam_game_detail_news_empty", "value": "暂无新闻" }
+    ,{ "name": "steam_game_detail_load_failed", "value": "详情加载失败" }
+    ,{ "name": "steam_game_detail_retry", "value": "重试" }
+    ,{ "name": "steam_library_sort_name", "value": "名称" }
+    ,{ "name": "steam_library_sort_recent", "value": "最近游玩" }
+    ,{ "name": "steam_library_sort_playtime", "value": "游戏时间" }
+    ,{ "name": "steam_library_sort_favorite", "value": "收藏优先" }
+    ,{ "name": "steam_library_status_idle", "value": "游戏库待同步" }
+    ,{ "name": "steam_library_status_loading", "value": "正在同步游戏库…" }
+    ,{ "name": "steam_library_status_synced", "value": "游戏库已同步" }
+    ,{ "name": "steam_library_status_failed", "value": "游戏库同步失败" }
+    ,{ "name": "steam_library_status_stale", "value": "显示的是缓存数据，刷新失败将自动重试" }
+    ,{ "name": "steam_library_status_not_logged_on", "value": "请先登录账户" }
+    ,{ "name": "steam_library_unavailable_title", "value": "无法获取游戏库" }
+    ,{ "name": "steam_library_unavailable_desc", "value": "请先在账号页登录 Steam 账户后查看游戏库。" }
+    ,{ "name": "steam_library_empty_title", "value": "游戏库为空" }
+    ,{ "name": "steam_library_empty_desc", "value": "当前账户暂未获取到任何游戏。" }
+    ,{ "name": "steam_home_card_library_title", "value": "游戏库" }
+    ,{ "name": "steam_home_card_library_desc", "value": "查看当前账户的全部游戏、收藏与游戏时间，支持多种方式排序。" }
+    ,{ "name": "steam_home_card_library_open", "value": "打开游戏库" }
+    ,{ "name": "steam_badge_detail_subtitle", "value": "徽章详情" }
+    ,{ "name": "steam_badge_detail_kind_game", "value": "游戏徽章" }
+    ,{ "name": "steam_badge_detail_kind_community", "value": "社区徽章" }
+    ,{ "name": "steam_badge_detail_status_crafted", "value": "已合成" }
+    ,{ "name": "steam_badge_detail_status_uncrafted", "value": "未合成" }
+    ,{ "name": "steam_badge_detail_level_label", "value": "等级" }
+    ,{ "name": "steam_badge_detail_experience_label", "value": "经验值" }
+    ,{ "name": "steam_badge_detail_playtime_label", "value": "游玩时长" }
+    ,{ "name": "steam_badge_detail_cards_remaining_label", "value": "剩余卡牌" }
+    ,{ "name": "steam_badge_detail_open_badge_page", "value": "打开徽章页" }
+    ,{ "name": "steam_badge_detail_open_store", "value": "打开商店页" }
+    ,{ "name": "steam_settings_hyper_snap_title", "value": "应用快启" }
+    ,{ "name": "steam_settings_hyper_snap_desc", "value": "从系统内存快照恢复进程，加快应用启动速度；关闭后回退标准冷启动。" }
+    ,{ "name": "steam_settings_hyper_snap_enabled_label", "value": "启用快启" }
+    ,{ "name": "steam_settings_hyper_snap_rebuild", "value": "重建快照" }
+    ,{ "name": "steam_settings_hyper_snap_saving", "value": "正在保存…" }
+    ,{ "name": "steam_settings_hyper_snap_saved", "value": "设置已保存，跨重启持续生效。" }
+    ,{ "name": "steam_settings_hyper_snap_save_failed", "value": "保存失败，当前设备可能不支持快启。" }
+    ,{ "name": "steam_settings_hyper_snap_rebuild_title", "value": "重建快启快照？" }
+    ,{ "name": "steam_settings_hyper_snap_rebuild_message", "value": "系统将丢弃现有快照并在空闲时重建，用于排查快启兼容问题。" }
+    ,{ "name": "steam_settings_hyper_snap_rebuild_confirm", "value": "重建" }
+    ,{ "name": "steam_settings_hyper_snap_rebuilding", "value": "正在请求重建…" }
+    ,{ "name": "steam_settings_hyper_snap_rebuild_requested", "value": "已请求重建快照。" }
+    ,{ "name": "steam_settings_hyper_snap_rebuild_failed", "value": "重建请求失败。" }
+    ,{ "name": "steam_settings_hyper_snap_unavailable", "value": "当前设备系统未提供应用快启服务。" }
+    ,{ "name": "steam_farm_card_drop_title", "value": "卡牌掉落" }
+    ,{ "name": "steam_farm_card_drop_app_id", "value": "AppID %s" }
+    ,{ "name": "steam_farm_card_drop_remaining", "value": "剩余待掉卡：%s 张" }
+    ,{ "name": "steam_farm_finished_title", "value": "挂卡完成" }
+    ,{ "name": "steam_farm_finished_message", "value": "本账号挂卡已完成，剩余待掉卡 %s 张。" }
+    ,{ "name": "steam_settings_farming_lists_title", "value": "优先队列与黑名单" }
+    ,{ "name": "steam_settings_farming_lists_hint", "value": "以英文逗号分隔的 AppID 列表；保存后在下一次挂卡计划生效。" }
+    ,{ "name": "steam_settings_farming_lists_priority_label", "value": "优先队列（fq）" }
+    ,{ "name": "steam_settings_farming_lists_blacklist_label", "value": "黑名单（fb）" }
+    ,{ "name": "steam_settings_farming_lists_placeholder", "value": "如 480,730" }
+    ,{ "name": "steam_settings_farming_lists_save", "value": "保存列表" }
+    ,{ "name": "steam_settings_farming_lists_saving", "value": "正在保存…" }
+    ,{ "name": "steam_settings_farming_lists_saved", "value": "列表已保存。" }
+    ,{ "name": "steam_settings_farming_lists_failed", "value": "保存失败，请检查后重试。" }
+    ,{ "name": "steam_settings_farming_lists_invalid", "value": "AppID 格式无效：只允许十进制数字，最多 128 个。" }
+    ,{ "name": "steam_market_browse_title", "value": "市场浏览" }
+    ,{ "name": "steam_market_browse_subtitle", "value": "只读浏览 Steam 社区市场" }
+    ,{ "name": "steam_market_browse_hint", "value": "搜索 Steam 社区市场挂单；买卖操作将在已登录的 Steam 页面中完成，ASF工坊不会在应用内直接执行。" }
+    ,{ "name": "steam_market_browse_query_placeholder", "value": "搜索物品名称" }
+    ,{ "name": "steam_market_browse_app_placeholder", "value": "按 AppID 过滤（可选）" }
+    ,{ "name": "steam_market_browse_search", "value": "搜索市场" }
+    ,{ "name": "steam_market_browse_empty", "value": "没有匹配的挂单。" }
+    ,{ "name": "steam_market_browse_failed", "value": "市场搜索失败，请稍后重试。" }
+    ,{ "name": "steam_market_browse_rate_limited", "value": "请求过于频繁，Steam 已限流；请稍后再试。" }
+    ,{ "name": "steam_market_browse_price_unknown", "value": "价格未知" }
+    ,{ "name": "steam_market_browse_listings_suffix", "value": "%s 个挂单" }
+    ,{ "name": "steam_market_browse_open", "value": "查看" }
+    ,{ "name": "steam_market_browse_prev", "value": "上一页" }
+    ,{ "name": "steam_market_browse_next", "value": "下一页" }
+    ,{ "name": "steam_market_browse_total_suffix", "value": "共 %s 条" }
+    ,{ "name": "steam_market_browse_entry", "value": "浏览市场" }
+    ,{ "name": "steam_confirmation_title", "value": "确认中心" }
+    ,{ "name": "steam_confirmation_subtitle", "value": "只读查看待确认事项" }
+    ,{ "name": "steam_confirmation_notice", "value": "以下为 Steam 令牌待确认事项（交易/市场/登录）。ASF工坊不在应用内执行接受或拒绝操作，请在 Steam 侧完成确认。" }
+    ,{ "name": "steam_confirmation_refresh", "value": "刷新确认列表" }
+    ,{ "name": "steam_confirmation_empty", "value": "当前没有待确认事项。" }
+    ,{ "name": "steam_confirmation_open", "value": "查看" }
+    ,{ "name": "steam_confirmation_entry", "value": "打开确认中心" }
+    ,{ "name": "steam_confirmation_kind_trade", "value": "交易报价" }
+    ,{ "name": "steam_confirmation_kind_market", "value": "市场操作" }
+    ,{ "name": "steam_confirmation_kind_login", "value": "登录确认" }
+    ,{ "name": "steam_confirmation_kind_unknown", "value": "待确认" }
+    ,{ "name": "steam_store_title", "value": "商店与愿望单" }
+    ,{ "name": "steam_store_subtitle", "value": "只读浏览 Steam 商店" }
+    ,{ "name": "steam_store_notice", "value": "搜索结果与愿望单仅供浏览；购买、加购与愿望单管理在已登录的 Steam 页面完成，ASF工坊不在应用内执行。" }
+    ,{ "name": "steam_store_tab_search", "value": "商店搜索" }
+    ,{ "name": "steam_store_tab_wishlist", "value": "愿望单" }
+    ,{ "name": "steam_store_search_placeholder", "value": "搜索游戏名称" }
+    ,{ "name": "steam_store_search_button", "value": "搜索" }
+    ,{ "name": "steam_store_search_empty", "value": "暂无搜索结果。" }
+    ,{ "name": "steam_store_search_failed", "value": "商店搜索失败，请稍后重试。" }
+    ,{ "name": "steam_store_price_unknown", "value": "价格未知" }
+    ,{ "name": "steam_store_metascore_prefix", "value": "媒体评分 " }
+    ,{ "name": "steam_store_open", "value": "商店页" }
+    ,{ "name": "steam_store_total_suffix", "value": "共 %s 个结果" }
+    ,{ "name": "steam_store_wishlist_empty", "value": "愿望单为空或不可见。" }
+    ,{ "name": "steam_store_wishlist_failed", "value": "愿望单加载失败，请稍后重试。" }
+    ,{ "name": "steam_store_wishlist_unnamed", "value": "AppID %s" }
+    ,{ "name": "steam_store_entry", "value": "商店与愿望单" }
+    ,{ "name": "steam_game_detail_host_title", "value": "游戏详情" }
+    ,{ "name": "steam_game_detail_host_subtitle", "value": "查看游戏信息、成就与新闻" }
+    ,{ "name": "steam_badge_detail_open_game_detail", "value": "查看游戏详情" }
+    ,{ "name": "steam_achievement_detail_title", "value": "成就详情" }
+    ,{ "name": "steam_achievement_detail_locked", "value": "尚未解锁" }
+    ,{ "name": "steam_achievement_detail_unlocked_at", "value": "解锁于" }
+    ,{ "name": "steam_achievement_detail_description", "value": "成就描述" }
+    ,{ "name": "steam_achievement_detail_no_description", "value": "该成就暂无描述。" }
+    ,{ "name": "steam_home_friends_online_suffix", "value": "%s 位好友在线" }
+    ,{ "name": "steam_home_friends_open_hint", "value": "查看在线好友与聊天" }
+    ,{ "name": "steam_wishlist_entry", "value": "愿望单" }
+    ,{ "name": "steam_library_search_placeholder", "value": "搜索游戏" }
+    ,{ "name": "steam_library_search_empty", "value": "没有匹配的游戏。" }
+    ,{ "name": "steam_library_search_clear", "value": "清空搜索" }
+    ,{ "name": "steam_library_group_recent_2d", "value": "最近两天" }
+    ,{ "name": "steam_library_group_recent_7d", "value": "最近一周" }
+    ,{ "name": "steam_library_group_recent_30d", "value": "最近一月" }
+    ,{ "name": "steam_library_group_recent_older", "value": "更早" }
+    ,{ "name": "steam_library_group_pt_1000", "value": "1000 小时以上" }
+    ,{ "name": "steam_library_group_pt_500", "value": "500 小时以上" }
+    ,{ "name": "steam_library_group_pt_100", "value": "100 小时以上" }
+    ,{ "name": "steam_library_group_pt_50", "value": "50 小时以上" }
+    ,{ "name": "steam_library_group_pt_10", "value": "10 小时以上" }
+    ,{ "name": "steam_library_group_pt_lt10", "value": "不足 10 小时" }
+    ,{ "name": "steam_library_group_never", "value": "从未游玩" }
   ]
 }

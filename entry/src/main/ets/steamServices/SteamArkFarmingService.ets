@@ -12,6 +12,8 @@ import {
   SteamBotConfig,
   SteamFarmEvent,
   SteamFarmEventType,
+  SteamFarmPauseMode,
+  SteamFarmingPreference,
   SteamFarmSnapshot,
   SteamFarmState,
   SteamFarmStateRecord,
@@ -23,16 +25,23 @@ import {
   SteamProxySettings,
   SteamSessionSnapshot,
   SteamSessionState,
+  SteamProtocolIdentity,
+  SteamTotp,
   SteamCommandName,
   SteamCommandParserOptions,
   SteamCommandReadOnlyPayload,
   SteamCommandRequest,
   SteamCommandResult,
   SteamCommandRouter,
+  SteamCardDropEvent,
   ISteamReadOnlyCommandExecutor,
   SteamInventoryQuery
 } from 'steam_core';
+import { HarmonyBinaryCryptoAdapter } from '../steamAdapters/HarmonyBinaryCryptoAdapter';
+import { steamArkGameLibraryService } from './SteamArkGameLibraryService';
+import { SteamArkFarmingListsUpdate } from './SteamArkStateService';
 import {
+  ISteamArkFarmingNotificationPublisher,
   ISteamArkFarmingRuntime,
   ISteamArkFarmingRuntimeFactory,
   SteamArkFarmingEvent,
@@ -128,6 +137,8 @@ class SteamArkPersistedFarmRecord {
   accountId: string = '';
   state: SteamFarmState = SteamFarmState.IDLE;
   paused: boolean = false;
+  pauseMode: SteamFarmPauseMode = SteamFarmPauseMode.NONE;
+  resumeAtEpochSeconds: number = 0;
   manualMode: boolean = false;
   manualAppIds: Array<string> = [];
   manualGameName: string = '';
@@ -142,6 +153,8 @@ class SteamArkPersistedFarmRecord {
     this.accountId = record.accountId;
     this.state = record.state;
     this.paused = record.paused;
+    this.pauseMode = record.pauseMode;
+    this.resumeAtEpochSeconds = record.resumeAtEpochSeconds;
     this.manualMode = record.manualMode;
     this.manualAppIds = record.manualAppIds.slice();
     this.manualGameName = record.manualGameName;
@@ -169,6 +182,7 @@ class SteamArkPersistedBadgeGame {
   storeUrl: string = '';
   badgeImageUrl: string = '';
   badgeUrl: string = '';
+  badgeCrafted: boolean = false;
 
   constructor(game: SteamGameDrop) {
     this.appId = game.appId;
@@ -182,6 +196,7 @@ class SteamArkPersistedBadgeGame {
     this.storeUrl = game.storeUrl;
     this.badgeImageUrl = game.badgeImageUrl;
     this.badgeUrl = game.badgeUrl;
+    this.badgeCrafted = game.badgeCrafted;
   }
 }
 
@@ -316,8 +331,24 @@ export class SteamArkFarmingStateStore implements IStateStore {
       this.readString(root.getProperty('manualGameName'), ''),
       this.readFarmState(root.getProperty('manualPreviousState')),
       this.readBoolean(root.getProperty('manualPreviousPaused'), false),
-      this.readStringArray(root.getProperty('manualPreviousAppIds'))
+      this.readStringArray(root.getProperty('manualPreviousAppIds')),
+      this.readPauseMode(root.getProperty('pauseMode')),
+      this.readInteger(root.getProperty('resumeAtEpochSeconds'), 0)
     );
+  }
+
+  private readPauseMode(value: SteamJsonValue | null): SteamFarmPauseMode {
+    const raw: string = this.readString(value, '');
+    if (raw === SteamFarmPauseMode.PERMANENT) {
+      return SteamFarmPauseMode.PERMANENT;
+    }
+    if (raw === SteamFarmPauseMode.TEMPORARY) {
+      return SteamFarmPauseMode.TEMPORARY;
+    }
+    if (raw === SteamFarmPauseMode.TIMED) {
+      return SteamFarmPauseMode.TIMED;
+    }
+    return SteamFarmPauseMode.NONE;
   }
 
   private readGames(value: SteamJsonValue | null): Array<SteamGameDrop> {
@@ -516,6 +547,7 @@ export class SteamArkFarmingService implements ISteamCommandExecutor, ISteamRead
   private readonly backgroundUpdateIntervalMs: number;
   private readonly commandRouter: SteamCommandRouter = new SteamCommandRouter(steamArkCoreLogger);
   private runtimeFactory: ISteamArkFarmingRuntimeFactory | null;
+  private notificationPublisher: ISteamArkFarmingNotificationPublisher | null = null;
   private backgroundTaskRunning: boolean = false;
   private backgroundTaskId: string = '';
   private backgroundTaskGeneration: number = 0;
@@ -546,6 +578,11 @@ export class SteamArkFarmingService implements ISteamCommandExecutor, ISteamRead
     this.disposed = false;
     SteamArkLog.info(TAG, 'farming runtime factory configured; enabled=' + String(factory.isEnabled));
     this.emit(new SteamArkFarmingEvent('', SteamArkFarmingEventType.BACKGROUND_TASK_CHANGED, null, null, this.availabilityMessage()));
+  }
+
+  setNotificationPublisher(publisher: ISteamArkFarmingNotificationPublisher | null): void {
+    this.notificationPublisher = publisher;
+    SteamArkLog.debug(TAG, 'farming notification publisher ' + (publisher === null ? 'cleared' : 'configured'));
   }
 
   isFarmingReady(): boolean {
@@ -735,6 +772,49 @@ export class SteamArkFarmingService implements ISteamCommandExecutor, ISteamRead
     );
   }
 
+  /** ASF pause variants: `pause~` keeps TEMPORARY, `pause& N` keeps TIMED. */
+  async pauseFor(accountId: string, pauseMode: SteamFarmPauseMode, seconds: number): Promise<SteamFarmSnapshot | null> {
+    const normalizedId = accountId.trim();
+    return await this.runAccountOperation<SteamFarmSnapshot | null>(
+      normalizedId,
+      async (): Promise<SteamFarmSnapshot | null> => await this.pauseForInternal(normalizedId, pauseMode, seconds)
+    );
+  }
+
+  private async pauseForInternal(
+    accountId: string,
+    pauseMode: SteamFarmPauseMode,
+    seconds: number
+  ): Promise<SteamFarmSnapshot | null> {
+    const normalizedId = accountId.trim();
+    const configurationGeneration = this.runtimeConfigurationGeneration;
+    this.requireCurrentRuntimeConfiguration(configurationGeneration);
+    SteamArkLog.info(TAG, 'farming pause variant requested; account=' + SteamArkLog.accountId(normalizedId) +
+      ', mode=' + String(pauseMode) + ', seconds=' + seconds.toString());
+    const runtime = this.runtimes.get(normalizedId);
+    if (runtime === undefined ||
+      this.runtimeConfigurationGenerations.get(normalizedId) !== configurationGeneration) {
+      SteamArkLog.debug(TAG, 'farming pause variant skipped; runtime not found; account=' +
+        SteamArkLog.accountId(normalizedId));
+      return null;
+    }
+    try {
+      const snapshot = await runtime.pauseFor(pauseMode, seconds);
+      this.requireCurrentRuntimeConfiguration(configurationGeneration);
+      this.snapshots.set(runtime.accountId, snapshot);
+      this.emitSnapshot(snapshot);
+      await this.stopBackgroundTaskIfIdle();
+      SteamArkLog.info(TAG, 'farming pause variant completed; account=' + SteamArkLog.accountId(normalizedId) +
+        ', state=' + String(snapshot.state) + ', pauseMode=' + String(snapshot.pauseMode));
+      return snapshot;
+    } catch (error) {
+      const normalized = this.normalizeError(error, 'Steam farming pause variant failed');
+      SteamArkLog.error(TAG, 'farming pause variant failed; account=' + SteamArkLog.accountId(normalizedId) +
+        ', errorType=' + SteamArkLog.errorKind(normalized));
+      throw normalized;
+    }
+  }
+
   private async pauseInternal(accountId: string): Promise<SteamFarmSnapshot | null> {
     const normalizedId = accountId.trim();
     const configurationGeneration = this.runtimeConfigurationGeneration;
@@ -888,9 +968,39 @@ export class SteamArkFarmingService implements ISteamCommandExecutor, ISteamRead
   }
 
   async execute(request: SteamCommandRequest): Promise<SteamFarmSnapshot> {
-    const accountId = request.accountId.trim();
-    SteamArkLog.info(TAG, 'farming command requested; account=' + SteamArkLog.accountId(accountId) +
+    const targets: Array<string> = [];
+    for (let index = 0; index < request.accountIds.length; index++) {
+      const accountId = request.accountIds[index].trim();
+      if (accountId.length > 0 && !targets.includes(accountId)) {
+        targets.push(accountId);
+      }
+    }
+    if (targets.length <= 0) {
+      targets.push(request.accountId.trim());
+    }
+    SteamArkLog.info(TAG, 'farming command requested; accounts=' + targets.length.toString() +
       ', command=' + String(request.name) + ', appCount=' + request.appIds.length.toString());
+    let lastSnapshot: SteamFarmSnapshot | null = null;
+    let lastFailure: Error | null = null;
+    for (let index = 0; index < targets.length; index++) {
+      try {
+        lastSnapshot = await this.executeForAccount(targets[index], request);
+      } catch (error) {
+        lastFailure = error instanceof Error ? error : new Error('Steam command failed');
+        SteamArkLog.warn(TAG, 'farming command failed for one account; account=' +
+          SteamArkLog.accountId(targets[index]) + ', errorType=' + SteamArkLog.errorKind(lastFailure));
+      }
+    }
+    if (lastSnapshot === null && lastFailure !== null) {
+      throw lastFailure;
+    }
+    if (lastSnapshot === null) {
+      throw new Error('Steam account is required');
+    }
+    return lastSnapshot;
+  }
+
+  private async executeForAccount(accountId: string, request: SteamCommandRequest): Promise<SteamFarmSnapshot> {
     if (accountId.length <= 0) {
       throw new Error('Steam account is required');
     }
@@ -906,6 +1016,20 @@ export class SteamArkFarmingService implements ISteamCommandExecutor, ISteamRead
       }
       case SteamCommandName.PAUSE: {
         const paused = await this.pause(accountId);
+        if (paused === null) {
+          throw new Error('Steam farming runtime is not active');
+        }
+        return paused;
+      }
+      case SteamCommandName.PAUSE_TEMPORARY: {
+        const paused = await this.pauseFor(accountId, SteamFarmPauseMode.TEMPORARY, 0);
+        if (paused === null) {
+          throw new Error('Steam farming runtime is not active');
+        }
+        return paused;
+      }
+      case SteamCommandName.PAUSE_TIMED: {
+        const paused = await this.pauseFor(accountId, SteamFarmPauseMode.TIMED, request.seconds);
         if (paused === null) {
           throw new Error('Steam farming runtime is not active');
         }
@@ -929,14 +1053,95 @@ export class SteamArkFarmingService implements ISteamCommandExecutor, ISteamRead
         }
         return resetSnapshot;
       }
+      case SteamCommandName.FARM_BLACKLIST_ADD:
+      case SteamCommandName.FARM_BLACKLIST_REMOVE:
+      case SteamCommandName.FARM_QUEUE_ADD:
+      case SteamCommandName.FARM_QUEUE_REMOVE:
+        return await this.executeFarmingListMutation(accountId, request);
     }
     throw new Error('Unsupported Steam command');
   }
 
+  /** Local planning list mutation (`fbadd`/`fbrm`/`fqadd`/`fqrm`); no Steam-side write. */
+  private async executeFarmingListMutation(accountId: string, request: SteamCommandRequest): Promise<SteamFarmSnapshot> {
+    const account = this.findAccount(accountId);
+    if (account === null) {
+      throw new Error('Steam account does not exist');
+    }
+    const blacklist: Array<string> = account.config.blacklist.slice();
+    const priorityAppIds: Array<string> = account.config.priorityAppIds.slice();
+    const isBlacklist: boolean = request.name === SteamCommandName.FARM_BLACKLIST_ADD ||
+      request.name === SteamCommandName.FARM_BLACKLIST_REMOVE;
+    const isAdd: boolean = request.name === SteamCommandName.FARM_BLACKLIST_ADD ||
+      request.name === SteamCommandName.FARM_QUEUE_ADD;
+    const target: Array<string> = isBlacklist ? blacklist : priorityAppIds;
+    for (let index = 0; index < request.appIds.length; index++) {
+      const appId: string = request.appIds[index];
+      const present: number = target.indexOf(appId);
+      if (isAdd && present < 0) {
+        target.push(appId);
+      } else if (!isAdd && present >= 0) {
+        target.splice(present, 1);
+      }
+    }
+    const saved = await this.stateService.saveFarmingLists(accountId,
+      new SteamArkFarmingListsUpdate(blacklist, priorityAppIds));
+    if (!saved) {
+      throw new Error('Steam farming list update was rejected');
+    }
+    const snapshot = this.getSnapshot(accountId);
+    if (snapshot !== null) {
+      return snapshot;
+    }
+    return new SteamFarmSnapshot(accountId, SteamFarmState.IDLE, false, false, [], [],
+      0, Math.floor(Date.now() / 1000));
+  }
+
   async executeReadOnly(request: SteamCommandRequest): Promise<SteamCommandReadOnlyPayload> {
-    const accountId = request.accountId.trim();
-    SteamArkLog.info(TAG, 'read-only command requested; account=' + SteamArkLog.accountId(accountId) +
+    SteamArkLog.info(TAG, 'read-only command requested; accounts=' + request.accountIds.length.toString() +
       ', command=' + String(request.name));
+    if (request.name === SteamCommandName.VERSION) {
+      return new SteamCommandReadOnlyPayload(null, null, null,
+        SteamProtocolIdentity.PRODUCT_NAME + ' (' + ASFWorkshopProductIdentity.DISPLAY_NAME_ZH + ')');
+    }
+    if (request.name === SteamCommandName.HELP) {
+      return new SteamCommandReadOnlyPayload(null, null, null,
+        'start stop pause pause~ pause& <s> resume status play reset inventory 2fa balance stats owns fb fbadd fbrm fq fqadd fqrm version help');
+    }
+    const targets: Array<string> = [];
+    for (let index = 0; index < request.accountIds.length; index++) {
+      const accountId = request.accountIds[index].trim();
+      if (accountId.length > 0 && !targets.includes(accountId)) {
+        targets.push(accountId);
+      }
+    }
+    if (targets.length <= 0) {
+      targets.push(request.accountId.trim());
+    }
+    let payload: SteamCommandReadOnlyPayload | null = null;
+    let lastFailure: Error | null = null;
+    for (let index = 0; index < targets.length; index++) {
+      try {
+        payload = await this.executeReadOnlyForAccount(targets[index], request);
+      } catch (error) {
+        lastFailure = error instanceof Error ? error : new Error('Steam read-only command failed');
+        SteamArkLog.warn(TAG, 'read-only command failed for one account; account=' +
+          SteamArkLog.accountId(targets[index]) + ', errorType=' + SteamArkLog.errorKind(lastFailure));
+      }
+    }
+    if (payload === null && lastFailure !== null) {
+      throw lastFailure;
+    }
+    if (payload === null) {
+      throw new Error('Steam account is required');
+    }
+    return payload;
+  }
+
+  private async executeReadOnlyForAccount(
+    accountId: string,
+    request: SteamCommandRequest
+  ): Promise<SteamCommandReadOnlyPayload> {
     if (accountId.length <= 0) {
       throw new Error('Steam account is required');
     }
@@ -955,9 +1160,17 @@ export class SteamArkFarmingService implements ISteamCommandExecutor, ISteamRead
         throw new Error('Steam account does not exist');
       }
       const pendingAuth = account.pendingAuth;
+      const credentials = await this.stateService.getCredentials(accountId);
+      if (credentials.sharedSecret.trim().length > 0) {
+        const code = await SteamTotp.generateForTime(
+          credentials.sharedSecret, Math.floor(Date.now() / 1000), new HarmonyBinaryCryptoAdapter());
+        return new SteamCommandReadOnlyPayload(
+          this.getSnapshot(accountId), null, pendingAuth,
+          'Steam Guard token generated', code);
+      }
       const message = pendingAuth === null
-        ? 'No pending Steam Guard challenge'
-        : 'Steam Guard challenge status read';
+        ? 'No Steam Guard shared secret on file and no pending challenge'
+        : 'Steam Guard challenge status read (no shared secret on file)';
       return new SteamCommandReadOnlyPayload(
         this.getSnapshot(accountId),
         null,
@@ -965,7 +1178,95 @@ export class SteamArkFarmingService implements ISteamCommandExecutor, ISteamRead
         message
       );
     }
+    if (request.name === SteamCommandName.BALANCE) {
+      const account = this.findAccount(accountId);
+      if (account === null) {
+        throw new Error('Steam account does not exist');
+      }
+      const balance: string = account.session.walletBalance.trim();
+      const currency: string = SteamArkFarmingService.currencyCode(account.session.walletCurrency);
+      const message = balance.length > 0
+        ? 'Wallet balance: ' + balance + (currency.length > 0 ? ' ' + currency : '')
+        : 'Wallet balance is not available for this session';
+      return new SteamCommandReadOnlyPayload(this.getSnapshot(accountId), null, null, message);
+    }
+    if (request.name === SteamCommandName.STATS) {
+      const stateSnapshot = this.stateService.getSnapshot();
+      let activeFarms: number = 0;
+      let remainingCards: number = 0;
+      this.snapshots.forEach((snapshot: SteamFarmSnapshot): void => {
+        if (snapshot.nowFarming) {
+          activeFarms++;
+        }
+        for (let index = 0; index < snapshot.games.length; index++) {
+          remainingCards += snapshot.games[index].cardsRemaining;
+        }
+      });
+      const message = 'accounts=' + stateSnapshot.accounts.length.toString() +
+        ', activeFarms=' + activeFarms.toString() +
+        ', remainingCards=' + remainingCards.toString() +
+        ', backgroundTask=' + (this.isBackgroundTaskRunning() ? 'running' : 'idle');
+      return new SteamCommandReadOnlyPayload(null, null, null, message);
+    }
+    if (request.name === SteamCommandName.OWNS) {
+      return await this.executeOwns(accountId, request.query);
+    }
+    if (request.name === SteamCommandName.FARM_BLACKLIST || request.name === SteamCommandName.FARM_QUEUE) {
+      const account = this.findAccount(accountId);
+      if (account === null) {
+        throw new Error('Steam account does not exist');
+      }
+      const appIds: Array<string> = request.name === SteamCommandName.FARM_BLACKLIST
+        ? account.config.blacklist
+        : account.config.priorityAppIds;
+      const label: string = request.name === SteamCommandName.FARM_BLACKLIST ? 'Blacklist' : 'Priority queue';
+      const message = label + ' (' + appIds.length.toString() + '): ' +
+        (appIds.length > 0 ? appIds.join(', ') : 'empty');
+      return new SteamCommandReadOnlyPayload(this.getSnapshot(accountId), null, null, message);
+    }
     throw new Error('Unsupported read-only Steam command');
+  }
+
+  private async executeOwns(accountId: string, query: string): Promise<SteamCommandReadOnlyPayload> {
+    const normalizedQuery: string = query.trim();
+    if (normalizedQuery.length <= 0) {
+      throw new Error('A game AppID or name is required');
+    }
+    const library = steamArkGameLibraryService.getSnapshot(accountId);
+    if (library === null) {
+      return new SteamCommandReadOnlyPayload(this.getSnapshot(accountId), null, null,
+        'The local game library snapshot is empty; sync the library first');
+    }
+    const matches: Array<string> = [];
+    const isDecimalQuery: boolean = /^[0-9]+$/.test(normalizedQuery);
+    for (let index = 0; index < library.games.length; index++) {
+      const game = library.games[index];
+      if (isDecimalQuery) {
+        if (game.appId === normalizedQuery) {
+          matches.push(game.appId + ' ' + game.name);
+        }
+      } else if (game.name.toLowerCase().indexOf(normalizedQuery.toLowerCase()) >= 0) {
+        matches.push(game.appId + ' ' + game.name);
+      }
+      if (matches.length >= 10) {
+        break;
+      }
+    }
+    const message = matches.length > 0
+      ? 'Owned: ' + matches.join('; ')
+      : (isDecimalQuery
+        ? 'AppID ' + normalizedQuery + ' is not in the local library snapshot'
+        : 'No owned game matches "' + normalizedQuery + '"');
+    return new SteamCommandReadOnlyPayload(this.getSnapshot(accountId), null, null, message);
+  }
+
+  private static currencyCode(currencyId: number): string {
+    const codes: Map<number, string> = new Map<number, string>();
+    codes.set(1, 'USD'); codes.set(2, 'GBP'); codes.set(3, 'EUR'); codes.set(5, 'RUB');
+    codes.set(6, 'BRL'); codes.set(7, 'JPY'); codes.set(15, 'KRW'); codes.set(16, 'TRY');
+    codes.set(19, 'CAD'); codes.set(20, 'AUD'); codes.set(23, 'CNY'); codes.set(24, 'INR');
+    codes.set(29, 'HKD'); codes.set(30, 'TWD'); codes.set(34, 'ARS');
+    return codes.get(currencyId) ?? '';
   }
 
   async executeCommand(
@@ -1323,7 +1624,8 @@ export class SteamArkFarmingService implements ISteamCommandExecutor, ISteamRead
       this.copyConfig(account.config),
       credentials,
       stateStore,
-      proxyPassword
+      proxyPassword,
+      this.stateService.resolveAccountLocale(accountId)
     );
     if (this.runtimeGenerationFor(accountId) !== generation ||
       !this.isCurrentRuntimeConfiguration(configurationGeneration)) {
@@ -1532,6 +1834,43 @@ export class SteamArkFarmingService implements ISteamCommandExecutor, ISteamRead
     }
   }
 
+  private publishCardDropNotification(
+    accountId: string,
+    drop: SteamCardDropEvent,
+    snapshot: SteamFarmSnapshot
+  ): void {
+    const publisher: ISteamArkFarmingNotificationPublisher | null = this.notificationPublisher;
+    if (publisher === null) {
+      return;
+    }
+    SteamArkLog.debug(TAG, 'card drop notification publish started; account=' +
+      SteamArkLog.accountId(accountId) + ', app=' + drop.appId);
+    void publisher.publishCardDrop(accountId, drop, snapshot).catch((error: Error): void => {
+      SteamArkLog.warn(TAG, 'card drop notification publish failed; account=' +
+        SteamArkLog.accountId(accountId) + ', app=' + drop.appId +
+        ', errorType=' + SteamArkLog.errorKind(error));
+    });
+  }
+
+  /** Local notification only; Steam messages are never sent from the app. */
+  private publishFarmFinishedIfRequested(accountId: string, snapshot: SteamFarmSnapshot): void {
+    const account = this.findAccount(accountId);
+    if (account === null ||
+      !account.config.hasPreference(SteamFarmingPreference.SEND_ON_FARMING_FINISHED)) {
+      return;
+    }
+    const publisher: ISteamArkFarmingNotificationPublisher | null = this.notificationPublisher;
+    if (publisher === null) {
+      return;
+    }
+    SteamArkLog.info(TAG, 'farm finished notification publish started; account=' +
+      SteamArkLog.accountId(accountId));
+    void publisher.publishFarmFinished(accountId, snapshot).catch((error: Error): void => {
+      SteamArkLog.warn(TAG, 'farm finished notification publish failed; account=' +
+        SteamArkLog.accountId(accountId) + ', errorType=' + SteamArkLog.errorKind(error));
+    });
+  }
+
   private handleRuntimeFarmEvent(
     runtime: ISteamArkFarmingRuntime,
     event: SteamFarmEvent,
@@ -1547,8 +1886,15 @@ export class SteamArkFarmingService implements ISteamCommandExecutor, ISteamRead
     SteamArkLog.debug(TAG, 'farming runtime event received; account=' +
       SteamArkLog.accountId(event.snapshot.accountId) + ', type=' + String(event.type) +
       ', state=' + String(event.snapshot.state) + ', active=' + String(event.snapshot.nowFarming));
+    const previousSnapshot: SteamFarmSnapshot | undefined = this.snapshots.get(event.snapshot.accountId);
+    const previousState: SteamFarmState | null = previousSnapshot === undefined
+      ? null : previousSnapshot.state;
     this.snapshots.set(event.snapshot.accountId, event.snapshot);
     this.emitSnapshot(event.snapshot);
+    if (previousState !== null && previousState !== SteamFarmState.COMPLETED &&
+      event.snapshot.state === SteamFarmState.COMPLETED) {
+      this.publishFarmFinishedIfRequested(event.snapshot.accountId, event.snapshot);
+    }
     if (event.type === SteamFarmEventType.BADGE_SYNCED && event.badgeReport !== null) {
       const updatedAtEpochSeconds = Math.floor(Date.now() / 1000);
       this.badgeReports.set(event.snapshot.accountId, event.badgeReport);
@@ -1565,6 +1911,19 @@ export class SteamArkFarmingService implements ISteamCommandExecutor, ISteamRead
       SteamArkLog.info(TAG, 'badge synchronization event handled; account=' +
         SteamArkLog.accountId(event.snapshot.accountId) + ', pages=' + event.badgeReport.pages.length.toString() +
         ', games=' + event.badgeReport.games.length.toString());
+      return;
+    }
+    if (event.type === SteamFarmEventType.CARD_DROPPED && event.drop !== null) {
+      this.emit(new SteamArkFarmingEvent(
+        event.snapshot.accountId,
+        SteamArkFarmingEventType.CARD_DROPPED,
+        event.snapshot,
+        null,
+        event.message,
+        null,
+        event.drop
+      ));
+      this.publishCardDropNotification(event.snapshot.accountId, event.drop, event.snapshot);
     }
     if (!event.snapshot.nowFarming) {
       this.markBackgroundTaskStoppedIfIdle();
@@ -2043,18 +2402,24 @@ export class SteamArkFarmingService implements ISteamCommandExecutor, ISteamRead
       if (appId.length <= 0) {
         continue;
       }
+      const badgeLevel: number = this.readInteger(item.getProperty('badgeLevel'), 0);
+      // Older caches lack the crafted flag; a known level implies the badge
+      // was crafted (its row carried a badge_gamebadge_ id).
+      const badgeCrafted: boolean = this.readBoolean(item.getProperty('badgeCrafted'), false) ||
+        badgeLevel > 0;
       games.push(new SteamGameDrop(
         appId,
         this.readString(item.getProperty('name'), ''),
         this.readNumber(item.getProperty('hoursPlayed'), 0),
         this.readInteger(item.getProperty('cardsRemaining'), 0),
-        this.readInteger(item.getProperty('badgeLevel'), 0),
+        badgeLevel,
         this.readBoolean(item.getProperty('marketable'), false),
         this.readString(item.getProperty('playableAppId'), appId),
         this.readString(item.getProperty('imageUrl'), ''),
         this.readString(item.getProperty('storeUrl'), ''),
         this.readString(item.getProperty('badgeImageUrl'), ''),
-        this.readString(item.getProperty('badgeUrl'), '')
+        this.readString(item.getProperty('badgeUrl'), ''),
+        badgeCrafted
       ));
     }
     return games;
@@ -2083,6 +2448,11 @@ export class SteamArkFarmingService implements ISteamCommandExecutor, ISteamRead
       ));
     }
     return badges;
+  }
+
+  /** Public region-change entry: badge names are language-dependent. */
+  async clearBadgeReportForAccount(accountId: string): Promise<void> {
+    await this.clearBadgeReport(accountId);
   }
 
   private async clearBadgeReport(accountId: string): Promise<boolean> {

@@ -71,6 +71,7 @@ export struct SteamArkSocialPage {
   @State private statusMessage: ResourceStr = $r('app.string.steam_social_status_idle');
   @StorageProp('ngf_is_dark_mode') private isDarkMode: boolean = false;
   @StorageProp('steam_ark_profile_background_url') private profileBackgroundUrl: string = '';
+  @StorageProp('steam_ark_profile_background_enabled') private backgroundEnabled: boolean = true;
   @StorageProp('ngf_visual_effects_should_use_system_material_surface') private useSysMat: boolean = true;
   private isPageActive: boolean = false;
   private lifecycleGeneration: number = 0;
@@ -160,7 +161,7 @@ export struct SteamArkSocialPage {
       true,
       false
     ))
-    .backgroundImage(this.profileBackgroundUrl)
+    .backgroundImage(this.backgroundEnabled ? this.profileBackgroundUrl : '')
     .backgroundImageSize(ImageSize.Cover)
     .ignoreLayoutSafeArea([LayoutSafeAreaType.SYSTEM], [LayoutSafeAreaEdge.TOP, LayoutSafeAreaEdge.BOTTOM])
     .bindToScrollable([this.scroller])
@@ -664,6 +665,26 @@ export struct SteamArkSocialPage {
   @Builder
   private buildTradesSection(): void {
     Column({ space: 10 }) {
+      Button() {
+        Row({ space: 8 }) {
+          SymbolGlyph($r('sys.symbol.lock_shield'))
+            .fontSize(16)
+            .fontColor([SteamArkTheme.onAccent(this.isDarkMode)])
+          Text($r('app.string.steam_confirmation_entry'))
+            .fontSize(14)
+            .fontWeight(FontWeight.Medium)
+            .fontColor(SteamArkTheme.onAccent(this.isDarkMode))
+        }
+        .justifyContent(FlexAlign.Center)
+      }
+      .width('100%')
+      .height(40)
+      .borderRadius(NGFControlStyleTokens.FORM_CONTROL_RADIUS)
+      .backgroundColor(SteamArkTheme.accent(this.isDarkMode))
+      .id('steam-ark-social-open-confirmations')
+      .onClick((): void => {
+        SteamArkNavigationBridge.pushHomeRoute(SteamArkRouteName.CONFIRMATIONS, null);
+      })
       if (this.trades.length > 0) {
         ForEach(this.trades, (item: SteamArkMessageItem) => {
           this.buildTradeCard(item)

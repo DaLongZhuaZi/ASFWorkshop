@@ -28,6 +28,7 @@ import {
   SteamCredentialSet,
   SteamFarmEvent,
   SteamFarmEventType,
+  SteamFarmPauseMode,
   SteamFarmStateRecord,
   SteamFarmState,
   SteamFarmSnapshot,
@@ -286,6 +287,10 @@ class FakeFarmingRuntime implements ISteamArkFarmingRuntime {
     this.currentSnapshot = this.snapshotFor(SteamFarmState.PAUSED, true, false);
     this.emitSnapshot();
     return this.currentSnapshot;
+  }
+
+  async pauseFor(_pauseMode: SteamFarmPauseMode, _seconds: number): Promise<SteamFarmSnapshot> {
+    return await this.pause();
   }
 
   async resume(): Promise<SteamFarmSnapshot> {

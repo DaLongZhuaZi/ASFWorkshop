@@ -17,8 +17,9 @@ import {
   SteamCredentialSet,
   SteamFarmEvent,
   SteamFarmEventListener,
-  SteamFarmSnapshot,
   SteamFarmEventType,
+  SteamFarmPauseMode,
+  SteamFarmSnapshot,
   SteamFarmingBridge,
   SteamFarmingBridgeOptions,
   SteamProxyKind,
@@ -33,6 +34,7 @@ import {
 } from '../steamServices/SteamArkFarmingContracts';
 import { ASFWorkshopProductIdentity } from '../steamServices/ASFWorkshopProductIdentity';
 import { SteamArkLog } from '../steamServices/SteamArkLogger';
+import { SteamArkContentLocale } from '../steamServices/SteamArkRegionPolicy';
 import { steamArkCoreLogger } from '../steamServices/SteamArkCoreLogger';
 import { HarmonySteamClock, HarmonySteamCmMultiDecompressor, HarmonySteamCmScheduler } from './HarmonySteamCmRuntime';
 import { HarmonySteamCmClientFactory } from './HarmonySteamCmClientFactory';
@@ -100,6 +102,7 @@ export class HarmonySteamFarmingRuntime implements ISteamArkFarmingRuntime {
     credentials: SteamCredentialSet,
     stateStore: IStateStore,
     proxyPassword: string = '',
+    locale: SteamArkContentLocale | null = null,
     options: HarmonySteamFarmingRuntimeOptions = new HarmonySteamFarmingRuntimeOptions()
   ) {
     this.accountId = profile.accountId;
@@ -108,13 +111,14 @@ export class HarmonySteamFarmingRuntime implements ISteamArkFarmingRuntime {
     this.scheduler = new HarmonySteamCmScheduler();
     this.clock = new HarmonySteamClock();
     const proxy = HarmonySteamFarmingRuntime.toProxy(profile, proxyPassword);
+    const cmLanguage: string = locale !== null ? locale.steamLanguage : 'english';
     const cmOptions = new SteamCmClientOptions(
       options.cmServer,
       profile.steamId64,
       ASFWorkshopProductIdentity.DEVICE_FRIENDLY_NAME,
       65581,
       1771,
-      'english',
+      cmLanguage,
       0,
       30,
       2,
@@ -145,7 +149,8 @@ export class HarmonySteamFarmingRuntime implements ISteamArkFarmingRuntime {
       this.clock,
       profile.steamId64,
       proxy,
-      options.userAgent + ' SteamWeb'
+      options.userAgent + ' SteamWeb',
+      cmLanguage
     );
     this.coordinator = new FarmingCoordinator(
       profile.accountId,
@@ -288,6 +293,26 @@ export class HarmonySteamFarmingRuntime implements ISteamArkFarmingRuntime {
     this.notifyFarmSnapshot(snapshot);
     SteamArkLog.info(TAG, 'farming runtime pause completed; account=' + SteamArkLog.accountId(this.accountId) +
       ', state=' + String(snapshot.state));
+    return snapshot;
+  }
+
+  async pauseFor(pauseMode: SteamFarmPauseMode, seconds: number): Promise<SteamFarmSnapshot> {
+    this.ensureAvailable();
+    SteamArkLog.info(TAG, 'farming runtime pause variant requested; account=' +
+      SteamArkLog.accountId(this.accountId) + ', mode=' + String(pauseMode) +
+      ', seconds=' + seconds.toString());
+    if (!this.started) {
+      SteamArkLog.debug(TAG, 'farming runtime pause variant skipped; not started; account=' +
+        SteamArkLog.accountId(this.accountId));
+      return this.snapshot;
+    }
+    let snapshot: SteamFarmSnapshot;
+    if (pauseMode === SteamFarmPauseMode.TIMED) {
+      snapshot = await this.coordinator.pauseForSeconds(seconds);
+    } else {
+      snapshot = await this.coordinator.pauseTemporarily();
+    }
+    this.notifyFarmSnapshot(snapshot);
     return snapshot;
   }
 
@@ -562,7 +587,8 @@ export class HarmonySteamFarmingRuntimeFactory implements ISteamArkFarmingRuntim
     config: SteamBotConfig,
     credentials: SteamCredentialSet,
     stateStore: IStateStore,
-    proxyPassword: string = ''
+    proxyPassword: string = '',
+    locale: SteamArkContentLocale | null = null
   ): ISteamArkFarmingRuntime {
     SteamArkLog.info(TAG, 'farming runtime factory create requested; account=' +
       SteamArkLog.accountId(profile.accountId) + ', enabled=' + String(this.isEnabled));
@@ -571,7 +597,7 @@ export class HarmonySteamFarmingRuntimeFactory implements ISteamArkFarmingRuntim
         SteamArkLog.accountId(profile.accountId));
       throw new Error(this.unavailableReason);
     }
-    const runtime = new HarmonySteamFarmingRuntime(profile, config, credentials, stateStore, proxyPassword, this.options);
+    const runtime = new HarmonySteamFarmingRuntime(profile, config, credentials, stateStore, proxyPassword, locale, this.options);
     SteamArkLog.info(TAG, 'farming runtime factory create completed; account=' +
       SteamArkLog.accountId(profile.accountId));
     return runtime;

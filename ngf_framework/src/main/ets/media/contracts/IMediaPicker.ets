@@ -18,8 +18,23 @@ export interface IMediaPicker {
    */
   pickDocuments(): Promise<Array<string>>;
 
-  /** Selects one UTF-8 document and reads it without exposing its URI to callers. */
+  /**
+   * 调起系统安全的文件选择器并读取单个 UTF-8 文本文档，不向调用方暴露 URI。
+   * @returns 用户取消选择时返回 null；已选中文件但读取失败时抛出 NGFDocumentReadError。
+   */
   pickDocumentText(): Promise<NGFTextDocument | null>;
+}
+
+/** 用户已选中文件但内容读取失败时抛出，用于与“用户取消”（返回 null）区分。 */
+export class NGFDocumentReadError extends Error {
+  readonly detail: string;
+
+  constructor(detail: string) {
+    super(detail.length > 0 ? 'failed to read the selected document: ' + detail
+      : 'failed to read the selected document');
+    this.name = 'NGFDocumentReadError';
+    this.detail = detail;
+  }
 }
 
 export class NGFTextDocument {

@@ -61,6 +61,7 @@ export struct SteamArkNetworkPage {
   @State private statusMessage: ResourceStr = $r('app.string.steam_network_status_idle');
   @StorageProp('ngf_is_dark_mode') private isDarkMode: boolean = false;
   @StorageProp('steam_ark_profile_background_url') private profileBackgroundUrl: string = '';
+  @StorageProp('steam_ark_profile_background_enabled') private backgroundEnabled: boolean = true;
   @StorageProp('ngf_visual_effects_should_use_system_material_surface') private useSysMat: boolean = true;
   private readonly scroller: Scroller = new Scroller();
   private proxyPasswordLoadVersion: number = 0;
@@ -141,7 +142,7 @@ export struct SteamArkNetworkPage {
         true,
         false
       ))
-      .backgroundImage(this.profileBackgroundUrl)
+      .backgroundImage(this.backgroundEnabled ? this.profileBackgroundUrl : '')
       .backgroundImageSize(ImageSize.Cover)
       .ignoreLayoutSafeArea([LayoutSafeAreaType.SYSTEM], [LayoutSafeAreaEdge.TOP, LayoutSafeAreaEdge.BOTTOM])
       .bindToScrollable([this.scroller])
@@ -214,6 +215,21 @@ export struct SteamArkNetworkPage {
         this.buildModeButton(SteamArkProxyMode.SOCKS5, $r('app.string.steam_network_mode_socks5'))
       }
       .width('100%')
+
+      if (this.proxyMode === SteamArkProxyMode.SOCKS5) {
+        Row({ space: 6 }) {
+          SymbolGlyph($r('sys.symbol.exclamationmark_triangle'))
+            .fontSize(14)
+            .fontColor([SteamArkTheme.warning(this.isDarkMode)])
+          Text($r('app.string.steam_network_socks5_warning'))
+            .layoutWeight(1)
+            .fontSize(12)
+            .lineHeight(18)
+            .fontColor(SteamArkTheme.warning(this.isDarkMode))
+        }
+        .width('100%')
+        .alignItems(VerticalAlign.Top)
+      }
 
       Row({ space: 10 }) {
         TextInput({

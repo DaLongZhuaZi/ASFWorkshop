@@ -70,6 +70,7 @@ export struct SteamArkDiagnosticsPage {
   @State private auditEntries: Array<SteamArkSensitiveActionAuditEntry> = [];
   @StorageProp('ngf_is_dark_mode') private isDarkMode: boolean = false;
   @StorageProp('steam_ark_profile_background_url') private profileBackgroundUrl: string = '';
+  @StorageProp('steam_ark_profile_background_enabled') private backgroundEnabled: boolean = true;
   @StorageProp('ngf_visual_effects_should_use_system_material_surface') private useSysMat: boolean = true;
   private readonly scroller: Scroller = new Scroller();
   private isPageActive: boolean = false;
@@ -181,7 +182,7 @@ export struct SteamArkDiagnosticsPage {
       true,
       false
     ))
-    .backgroundImage(this.profileBackgroundUrl)
+    .backgroundImage(this.backgroundEnabled ? this.profileBackgroundUrl : '')
     .backgroundImageSize(ImageSize.Cover)
     .ignoreLayoutSafeArea([LayoutSafeAreaType.SYSTEM], [LayoutSafeAreaEdge.TOP, LayoutSafeAreaEdge.BOTTOM])
     .bindToScrollable([this.scroller])

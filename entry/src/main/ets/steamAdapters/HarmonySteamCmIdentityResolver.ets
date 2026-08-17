@@ -4,7 +4,8 @@ import {
   SteamCmClientOptions,
   SteamCmEvent,
   SteamCmEventType,
-  SteamCredentialSet
+  SteamCredentialSet,
+  SteamJwt
 } from 'steam_core';
 import {
   HarmonySteamCmClientFactory
@@ -12,8 +13,12 @@ import {
 import {
   HarmonySteamCmWireTransportOptions
 } from './HarmonySteamCmWireTransport';
+import {
+  HarmonySteamCmMultiDecompressor
+} from './HarmonySteamCmRuntime';
 import { ASFWorkshopProductIdentity } from '../steamServices/ASFWorkshopProductIdentity';
 import { SteamArkLog } from '../steamServices/SteamArkLogger';
+import { steamArkCoreLogger } from '../steamServices/SteamArkCoreLogger';
 
 const TAG: string = 'HarmonySteamCmIdentityResolver';
 const IDENTITY_RESOLUTION_TIMEOUT_MILLISECONDS: number = 30000;
@@ -35,6 +40,14 @@ export class HarmonySteamCmIdentityResolver implements ISteamCmIdentityResolver 
   resolveSteamId64(accountId: string, credentials: SteamCredentialSet): Promise<string> {
     SteamArkLog.info(TAG, 'CM identity resolution started; account=' + SteamArkLog.accountId(accountId) +
       ', credentialFieldsPresent=' + String(credentials.accessToken.length > 0 || credentials.refreshToken.length > 0));
+    // The refresh token is a Steam-issued JWT whose "sub" claim is the
+    // SteamID64: read it offline before paying for a full CM logon.
+    const jwtSteamId64: string = SteamJwt.subjectClaim(credentials.refreshToken);
+    if (jwtSteamId64.length > 0 && jwtSteamId64 !== '0') {
+      SteamArkLog.info(TAG, 'CM identity resolved from refresh token subject; account=' +
+        SteamArkLog.accountId(accountId) + ', steamId64=' + SteamArkLog.steamId64(jwtSteamId64));
+      return Promise.resolve(jwtSteamId64);
+    }
     const options = new SteamCmClientOptions(
       this.server,
       '',
@@ -51,7 +64,13 @@ export class HarmonySteamCmIdentityResolver implements ISteamCmIdentityResolver 
       '',
       '',
       true,
-      false
+      false,
+      steamArkCoreLogger,
+      IDENTITY_RESOLUTION_TIMEOUT_MILLISECONDS,
+      // Real CM servers frequently wrap ClientLogonResponse in a CMsgMulti
+      // gzip envelope; without a decompressor the logon decode fails and the
+      // identity resolution times out. Every other factory path injects one.
+      new HarmonySteamCmMultiDecompressor()
     );
     const client: SteamCmClient = HarmonySteamCmClientFactory.create(
       accountId,

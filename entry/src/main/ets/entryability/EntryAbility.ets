@@ -20,18 +20,26 @@ import { ngfContinuationManagerFacade } from 'ngf_framework';
 import {
   ISteamArkAccountLifecycle,
   SteamArkLog,
+  STEAM_ARK_PROFILE_BACKGROUND_ENABLED_STORAGE_KEY,
   SteamArkNotificationChatLaunchRequest,
+  SteamArkNotificationFarmingLaunchRequest,
   SteamArkNotificationMessageLaunchRequest,
   SteamArkNotificationNavigation,
   steamArkFarmingService,
   steamArkSocialService,
+  steamArkGameLibraryService,
   steamArkStateService,
   steamArkSyncCoordinator,
-  steamArkWidgetStateCoordinator
+  steamArkConfirmationService,
+  steamArkWidgetStateCoordinator,
+  steamArkHyperSnapRecoveryCoordinator
 } from '../steamServices';
 import {
   HarmonySteamAuthServiceFactory,
+  HarmonySteamConfirmationClient,
+  HarmonySteamFarmingNotificationPublisher,
   HarmonySteamFarmingRuntimeFactory,
+  HarmonySteamGameLibraryAdapterFactory,
   HarmonySteamInventoryAdapterFactory,
   HarmonySteamMessageNotificationPublisher,
   HarmonySteamMessageResolver,
@@ -95,6 +103,13 @@ class SteamArkAccountLifecycleAdapter implements ISteamArkAccountLifecycle {
         firstFailure = error instanceof Error ? error : new Error('Steam social removal failed');
       }
     }
+    try {
+      steamArkGameLibraryService.clearCachedAccount(accountId);
+    } catch (error) {
+      if (firstFailure === null) {
+        firstFailure = error instanceof Error ? error : new Error('Steam game library cache cleanup failed');
+      }
+    }
     if (firstFailure !== null) {
       throw firstFailure;
     }
@@ -111,9 +126,13 @@ export default class EntryAbility extends UIAbility {
   private notificationMessageLaunchInProgress: boolean = false;
   private notificationMessageLaunchGeneration: number = 0;
   private pendingNotificationMessageLaunch: SteamArkNotificationMessageLaunchRequest | null = null;
+  private notificationFarmingLaunchInProgress: boolean = false;
+  private notificationFarmingLaunchGeneration: number = 0;
+  private pendingNotificationFarmingLaunch: SteamArkNotificationFarmingLaunchRequest | null = null;
   private readonly homeStackReadyCallback = (): void => {
     if (!this.isDestroying) {
       void this.tryOpenPendingNotificationMessage();
+      void this.tryOpenPendingNotificationFarming();
     }
   };
   private readonly themeChangedCallback = (_mode: NGFThemeMode): void => {
@@ -137,7 +156,16 @@ export default class EntryAbility extends UIAbility {
     steamArkSyncCoordinator.setMessageNotificationPublisher(new HarmonySteamMessageNotificationPublisher());
     steamArkSocialService.setRuntimeFactory(new HarmonySteamSocialRuntimeFactory());
     steamArkSocialService.setNotificationPublisher(new HarmonySteamSocialNotificationPublisher());
+    steamArkGameLibraryService.setAdapterFactory(new HarmonySteamGameLibraryAdapterFactory());
     steamArkFarmingService.setRuntimeFactory(new HarmonySteamFarmingRuntimeFactory());
+    steamArkFarmingService.setNotificationPublisher(new HarmonySteamFarmingNotificationPublisher());
+    steamArkConfirmationService.setClient(new HarmonySteamConfirmationClient());
+    steamArkStateService.setRegionChangeHandler(async (accountId: string): Promise<void> => {
+      // Library names and badge names are language-dependent; the region save
+      // already clears inventory and market caches inside the state service.
+      steamArkGameLibraryService.clearCachedAccount(accountId);
+      await steamArkFarmingService.clearBadgeReportForAccount(accountId);
+    });
     steamArkStateService.setAccountLifecycle(new SteamArkAccountLifecycleAdapter());
     SteamArkNavigationBridge.onHomeStackReady(NAVIGATION_READY_LISTENER_ID, this.homeStackReadyCallback);
     crashAnalytics.initialize();
@@ -273,6 +301,12 @@ export default class EntryAbility extends UIAbility {
         SteamArkLog.warn(TAG, 'Steam service initialization deferred; settings store is unavailable');
         return;
       }
+      // Load the profile-background preference into AppStorage before any
+      // page renders, so the default solid background can be enforced.
+      AppStorage.setOrCreate<boolean>(
+        STEAM_ARK_PROFILE_BACKGROUND_ENABLED_STORAGE_KEY,
+        ngfSettingsStoreFacade.getBoolean(STEAM_ARK_PROFILE_BACKGROUND_ENABLED_STORAGE_KEY, true)
+      );
       ngfDataIntegrationFacade.initializeRuntime(this.context as common.UIAbilityContext);
       ngfContentSourceIntegrationFacade.initializeRuntime(this.context as common.UIAbilityContext);
       steamArkWidgetStateCoordinator.start();
@@ -284,6 +318,7 @@ export default class EntryAbility extends UIAbility {
         await steamArkSyncCoordinator.start();
         SteamArkLog.startup(TAG, 'Steam synchronization coordinator started');
         this.steamServicesReady = true;
+        steamArkHyperSnapRecoveryCoordinator.notifyServicesReady();
         void this.tryOpenPendingNotificationChat();
         void this.tryOpenPendingNotificationMessage();
       }
@@ -362,6 +397,7 @@ export default class EntryAbility extends UIAbility {
   private captureNotificationLaunches(want: Want): void {
     this.captureNotificationChatLaunch(want);
     this.captureNotificationMessageLaunch(want);
+    this.captureNotificationFarmingLaunch(want);
   }
 
   private captureNotificationChatLaunch(want: Want): void {
@@ -490,9 +526,76 @@ export default class EntryAbility extends UIAbility {
     }
   }
 
+  private captureNotificationFarmingLaunch(want: Want): void {
+    const request: SteamArkNotificationFarmingLaunchRequest | null =
+      SteamArkNotificationNavigation.readOpenFarmingRequest(want.parameters);
+    if (request === null) {
+      return;
+    }
+    this.pendingNotificationFarmingLaunch = request;
+    this.notificationFarmingLaunchGeneration++;
+    SteamArkLog.info(TAG, 'notification farming launch queued; account=' +
+      SteamArkLog.accountId(request.accountId));
+    void this.tryOpenPendingNotificationFarming();
+  }
+
   private clearPendingNotificationMessageLaunch(generation: number): void {
     if (generation === this.notificationMessageLaunchGeneration) {
       this.pendingNotificationMessageLaunch = null;
+    }
+  }
+
+  private async tryOpenPendingNotificationFarming(): Promise<void> {
+    if (this.isDestroying || !this.steamServicesReady || !this.homeContentReady ||
+      this.notificationFarmingLaunchInProgress || this.pendingNotificationFarmingLaunch === null) {
+      return;
+    }
+    const request: SteamArkNotificationFarmingLaunchRequest = this.pendingNotificationFarmingLaunch;
+    const generation: number = this.notificationFarmingLaunchGeneration;
+    this.notificationFarmingLaunchInProgress = true;
+    try {
+      const selectedAccountId: string = steamArkStateService.getSnapshot().selectedAccountId;
+      if (selectedAccountId !== request.accountId) {
+        const selected: boolean = await steamArkStateService.selectAccount(request.accountId);
+        if (!selected) {
+          this.clearPendingNotificationFarmingLaunch(generation);
+          SteamArkLog.warn(TAG, 'notification farming launch rejected because the target account is unavailable; account=' +
+            SteamArkLog.accountId(request.accountId));
+          return;
+        }
+      }
+      if (this.isDestroying || generation !== this.notificationFarmingLaunchGeneration) {
+        return;
+      }
+      if (steamArkStateService.getSnapshot().selectedAccountId !== request.accountId) {
+        SteamArkLog.warn(TAG, 'notification farming launch deferred because account selection changed; account=' +
+          SteamArkLog.accountId(request.accountId));
+        return;
+      }
+      const opened: boolean = SteamArkNavigationBridge.pushHomeRoute(SteamArkRouteName.WORKSPACE, null);
+      if (!opened) {
+        SteamArkLog.warn(TAG, 'notification farming launch awaiting the home navigation stack; account=' +
+          SteamArkLog.accountId(request.accountId));
+        return;
+      }
+      this.clearPendingNotificationFarmingLaunch(generation);
+      SteamArkLog.info(TAG, 'notification farming launch completed; account=' +
+        SteamArkLog.accountId(request.accountId));
+    } catch (error) {
+      SteamArkLog.warn(TAG, 'notification farming launch failed; account=' +
+        SteamArkLog.accountId(request.accountId) + ', errorType=' + SteamArkLog.errorKind(error));
+    } finally {
+      this.notificationFarmingLaunchInProgress = false;
+      if (!this.isDestroying && this.pendingNotificationFarmingLaunch !== null &&
+        generation !== this.notificationFarmingLaunchGeneration) {
+        void this.tryOpenPendingNotificationFarming();
+      }
+    }
+  }
+
+  private clearPendingNotificationFarmingLaunch(generation: number): void {
+    if (generation === this.notificationFarmingLaunchGeneration) {
+      this.pendingNotificationFarmingLaunch = null;
     }
   }
 }

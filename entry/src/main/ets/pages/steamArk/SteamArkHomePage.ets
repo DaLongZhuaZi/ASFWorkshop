@@ -6,6 +6,8 @@ import {
   hdsMaterial
 } from '@kit.UIDesignKit';
 import {
+  NGFHdsEffectPresetFactory,
+  NGFHdsMaterialSurfacePreset,
   NGFHdsTitleBarOptionsFactory,
   NGFMaterialSurfaceTokens,
   ngfSettingsStoreFacade,
@@ -47,6 +49,10 @@ import {
 } from '../../steamServices';
 import { SteamArkAccountsPage } from './SteamArkAccountsPage';
 import { SteamArkBrowserPage } from './SteamArkBrowserPage';
+import { SteamArkMarketBrowsePage } from './SteamArkMarketBrowsePage';
+import { SteamArkConfirmationCenterPage } from './SteamArkConfirmationCenterPage';
+import { SteamArkStorePage } from './SteamArkStorePage';
+import { SteamArkGameDetailHostPage } from './SteamArkGameDetailHostPage';
 import { SteamArkInventoryPage } from './SteamArkInventoryPage';
 import { SteamArkMessagesPage } from './SteamArkMessagesPage';
 import { SteamArkNetworkPage } from './SteamArkNetworkPage';
@@ -54,25 +60,34 @@ import { SteamArkTokenPage } from './SteamArkTokenPage';
 import { SteamArkDiagnosticsPage } from './SteamArkDiagnosticsPage';
 import { SteamArkSettingsPage } from './SteamArkSettingsPage';
 import { SteamArkSocialPage } from './SteamArkSocialPage';
+import { SteamArkLibraryPage } from './SteamArkLibraryPage';
 import { SteamArkTheme } from './SteamArkTheme';
-import { steamArkTabScrollers } from './SteamArkTabScrollers';
+import { steamArkTabScrollers, SteamArkTabScrollListener } from './SteamArkTabScrollers';
 import { SteamArkWorkspacePage } from './SteamArkWorkspacePage';
 import { SteamArkNavigationBridge } from './SteamArkNavigationBridge';
 import { SteamArkPageWindowName, SteamArkPageWindowSupport } from './SteamArkPageWindowSupport';
 import { SteamArkProfileBackground } from './SteamArkProfileBackground';
-import { SteamArkBrowserRequest, SteamArkMessageNavigationRequest, SteamArkRouteName } from './SteamArkRoutes';
+import {
+  SteamArkBrowserRequest,
+  SteamArkGameDetailRequest,
+  SteamArkMessageNavigationRequest,
+  SteamArkRouteName
+} from './SteamArkRoutes';
 import { SteamArkStateUnavailableCard } from './SteamArkStateUnavailableCard';
-import { steamArkFloatingWindowCoordinator } from './SteamArkFloatingWindowCoordinator';
+import { display } from '@kit.ArkUI';
+import { steamArkFloatingWindowCoordinator, STEAM_ARK_FRIENDS_ANCHOR_X_PX, STEAM_ARK_FRIENDS_ANCHOR_Y_PX } from './SteamArkFloatingWindowCoordinator';
 import { SteamArkExperiencePolicy } from './SteamArkExperiencePolicy';
+import { SteamArkPanelBackBridge } from './SteamArkPanelBackBridge';
 
 class SteamArkHomeTab {
   static readonly OVERVIEW: number = 0;
   static readonly ACCOUNTS: number = 1;
   static readonly FARMING: number = 2;
   static readonly INVENTORY: number = 3;
-  static readonly MESSAGES: number = 4;
-  static readonly TOKENS: number = 5;
-  static readonly SETTINGS: number = 6;
+  static readonly LIBRARY: number = 4;
+  static readonly MESSAGES: number = 5;
+  static readonly TOKENS: number = 6;
+  static readonly SETTINGS: number = 7;
 }
 
 class SteamArkHomeCardId {
@@ -187,6 +202,10 @@ export struct SteamArkHomePage {
   @State private accountSyncStatuses: Array<SteamArkHomeAccountSyncStatus> = [];
   @State private visibleHomeCardIds: Array<string> = [];
   @State private cardManagerVisible: boolean = false;
+  @State private panelOpenOnActiveTab: boolean = false;
+  @State private friendsEntryPressed: boolean = false;
+  @State private friendsOnlineCount: number = 0;
+  @State private friendsBarHidden: boolean = false;
   @State private stateReady: boolean = false;
   @State private onboardingNetworkRunning: boolean = false;
   @State private onboardingNetworkAttempted: boolean = false;
@@ -194,6 +213,7 @@ export struct SteamArkHomePage {
   @State private onboardingNetworkSites: Array<SteamArkNetworkProbeSiteResult> = [];
   @StorageProp('ngf_is_dark_mode') private isDarkMode: boolean = false;
   @StorageProp('steam_ark_profile_background_url') private profileBackgroundUrl: string = '';
+  @StorageProp('steam_ark_profile_background_enabled') private backgroundEnabled: boolean = true;
   @StorageProp('ngf_visual_effects_should_use_system_material_surface') private useSysMat: boolean = true;
   private readonly tabsController: HdsTabsController = new HdsTabsController();
   private readonly overviewScroller: Scroller = new Scroller();
@@ -203,6 +223,7 @@ export struct SteamArkHomePage {
   private readonly messagesScroller: Scroller = steamArkTabScrollers.messages;
   private readonly tokenScroller: Scroller = steamArkTabScrollers.tokens;
   private readonly settingsScroller: Scroller = steamArkTabScrollers.settings;
+  private readonly libraryScroller: Scroller = steamArkTabScrollers.library;
   private isPageActive: boolean = false;
   private lifecycleGeneration: number = 0;
   private overviewInventoryRequestAccountId: string = '';
@@ -227,6 +248,30 @@ export struct SteamArkHomePage {
       this.applySocialSnapshot(snapshot);
     }
   };
+  private readonly tabScrollListener: SteamArkTabScrollListener = (yOffset: number): void => {
+    if (this.isPageActive) {
+      this.handleTabScrollDelta(yOffset);
+    }
+  };
+
+  /**
+   * Music-app auto-hide for the docked friends bar: swiping up (content
+   * scrolls forward) slides the bar down out of view; swiping down reveals it
+   * again. A small threshold absorbs fling jitter; switching tabs always
+   * restores the bar.
+   */
+  private handleTabScrollDelta(yOffset: number): void {
+    const threshold: number = 4;
+    if (!this.friendsBarHidden && yOffset > threshold) {
+      this.getUIContext().animateTo({ duration: 240, curve: Curve.FastOutSlowIn }, (): void => {
+        this.friendsBarHidden = true;
+      });
+    } else if (this.friendsBarHidden && yOffset < -threshold) {
+      this.getUIContext().animateTo({ duration: 240, curve: Curve.FastOutSlowIn }, (): void => {
+        this.friendsBarHidden = false;
+      });
+    }
+  }
 
   private loadStartupTabPreference(): void {
     const storedIndex: number = ngfSettingsStoreFacade.getNumber(
@@ -234,11 +279,12 @@ export struct SteamArkHomePage {
       SteamArkHomeTab.OVERVIEW
     );
     const normalizedIndex: number = Number.isSafeInteger(storedIndex) &&
-      storedIndex >= SteamArkHomeTab.OVERVIEW && storedIndex <= SteamArkHomeTab.SETTINGS
+      storedIndex >= SteamArkHomeTab.OVERVIEW && storedIndex <= SteamArkHomeTab.LIBRARY
       ? storedIndex
       : SteamArkHomeTab.OVERVIEW;
     this.startupTabIndex = normalizedIndex;
     this.selectedTabIndex = normalizedIndex;
+    SteamArkPanelBackBridge.setActiveTab(normalizedIndex);
     this.tabsController.changeIndex(normalizedIndex);
   }
 
@@ -319,17 +365,21 @@ export struct SteamArkHomePage {
     );
     SteamArkPageWindowSupport.apply(SteamArkPageWindowName.HOME);
     SteamArkNavigationBridge.bindHomeStack(this.pathStack);
+    SteamArkPanelBackBridge.subscribeTitleVisibility('SteamArkHomePage',
+      (panelVisible: boolean): void => {
+        this.panelOpenOnActiveTab = panelVisible;
+      });
     steamArkStateService.subscribe('SteamArkHomePage', this.stateListener);
     steamArkSyncCoordinator.subscribe('SteamArkHomePage', this.syncListener);
     steamArkFarmingService.subscribe('SteamArkHomePage', this.farmingListener);
     steamArkSocialService.subscribe('SteamArkHomePage', this.socialListener);
+    steamArkTabScrollers.addScrollListener('SteamArkHomePage', this.tabScrollListener);
     this.applyStateSnapshot(steamArkStateService.getSnapshot());
     this.loadStartupTabPreference();
     this.loadHomeCardPreference();
     this.applySocialSnapshot(steamArkSocialService.restore(this.selectedAccountId));
     this.applyFarmingSnapshot(steamArkFarmingService.getSnapshot(this.selectedAccountId));
     void this.initializeStateService();
-    void steamArkFloatingWindowCoordinator.showStatusBall();
     this.ensureOverviewInventory();
     this.ensureOverviewBadges();
     this.startOnboardingNetworkProbeIfNeeded();
@@ -344,6 +394,8 @@ export struct SteamArkHomePage {
     this.onboardingNetworkProbeVersion += 1;
     this.onboardingNetworkRunning = false;
     SteamArkNavigationBridge.unbindHomeStack(this.pathStack);
+    SteamArkPanelBackBridge.unsubscribeTitleVisibility('SteamArkHomePage');
+    steamArkTabScrollers.removeScrollListener('SteamArkHomePage');
     steamArkStateService.unsubscribe('SteamArkHomePage');
     steamArkSyncCoordinator.unsubscribe('SteamArkHomePage');
     steamArkFarmingService.unsubscribe('SteamArkHomePage');
@@ -365,6 +417,9 @@ export struct SteamArkHomePage {
             .scrollBar(BarState.Off)
             .edgeEffect(EdgeEffect.Spring)
             .backgroundColor($r('app.color.background_transparent'))
+            .onDidScroll((_xOffset: number, yOffset: number): void => {
+              steamArkTabScrollers.notifyScrollDelta(yOffset);
+            })
           }
           .tabBar(this.buildTabItem($r('app.string.steam_home_tab_overview'), $r('sys.symbol.house'), SteamArkHomeTab.OVERVIEW))
           .opacity(this.selectedTabIndex === SteamArkHomeTab.OVERVIEW ? 1 : 0.72)
@@ -407,6 +462,18 @@ export struct SteamArkHomePage {
           .animation({ duration: SteamArkExperiencePolicy.CONTENT_ENTER_DURATION, curve: Curve.EaseOut })
 
           TabContent() {
+            SteamArkLibraryPage({
+              embedded: true,
+              contentTopInsetVp: this.topInsetVp
+            })
+          }
+          .width('100%')
+          .height('100%')
+          .tabBar(this.buildTabItem($r('app.string.steam_home_tab_library'), $r('sys.symbol.gamecontroller'), SteamArkHomeTab.LIBRARY))
+          .opacity(this.selectedTabIndex === SteamArkHomeTab.LIBRARY ? 1 : 0.72)
+          .animation({ duration: SteamArkExperiencePolicy.CONTENT_ENTER_DURATION, curve: Curve.EaseOut })
+
+          TabContent() {
             SteamArkMessagesPage({
               embedded: true,
               contentTopInsetVp: this.topInsetVp
@@ -446,6 +513,7 @@ export struct SteamArkHomePage {
         .height('100%')
         .barMode(BarMode.Fixed)
         .barOverlap(true)
+        .barHeight(SteamArkExperiencePolicy.TAB_BAR_HEIGHT)
         .barFloatingStyle({
           adaptToHandedness: true,
           systemMaterialEffect: {
@@ -454,12 +522,24 @@ export struct SteamArkHomePage {
           },
           thermoCtrl: true,
           barOpacity: 0.96,
+          barSideMargin: SteamArkExperiencePolicy.TAB_BAR_SIDE_MARGIN,
           barBottomMargin: this.bottomInsetVp
         })
         .scrollable(true)
         .onChange((index: number): void => {
           this.selectedTabIndex = index;
+          SteamArkPanelBackBridge.setActiveTab(index);
+          // Switching tabs always restores the docked friends bar.
+          if (this.friendsBarHidden) {
+            this.getUIContext().animateTo({ duration: 240, curve: Curve.FastOutSlowIn }, (): void => {
+              this.friendsBarHidden = false;
+            });
+          }
         })
+
+        if (this.sessionState === SteamSessionState.LOGGED_ON && !this.panelOpenOnActiveTab) {
+          this.buildFriendsEntryLayer()
+        }
       }
       .width('100%')
       .height('100%')
@@ -467,16 +547,17 @@ export struct SteamArkHomePage {
     }
     .titleBar(NGFHdsTitleBarOptionsFactory.buildOverContentWithTitleColors(
       $r('app.string.steam_home_title'),
-      $r('app.string.steam_home_subtitle'),
+      undefined,
       $r('app.color.background_transparent'),
       SteamArkTheme.textPrimary(this.isDarkMode),
       SteamArkTheme.textSecondary(this.isDarkMode),
       true,
       false
     ))
-    .backgroundImage(this.profileBackgroundUrl)
+    .backgroundImage(this.backgroundEnabled ? this.profileBackgroundUrl : '')
     .backgroundImageSize(ImageSize.Cover)
     .titleMode(HdsNavigationTitleMode.FREE)
+    .hideTitleBar(this.panelOpenOnActiveTab)
     .hideBackButton(true)
     .navDestination(this.buildNavDestination)
     .mode(NavigationMode.Stack)
@@ -491,8 +572,149 @@ export struct SteamArkHomePage {
       this.inventoryScroller,
       this.messagesScroller,
       this.tokenScroller,
-      this.settingsScroller
+      this.settingsScroller,
+      this.libraryScroller
     ])
+  }
+
+  /**
+   * Docked friends mini bar (Plan A bottom container, in-app overlay, no
+   * window permission needed): spans the content width directly above the
+   * floating tab bar and opens the floating-window friends panel. All offsets
+   * come from the shared bar constants consumed by the HdsTabs floating style
+   * (height, side margin, bottom inset), so the bar, the mini bar and the tab
+   * pages' bottom clearance track each other on every device. Hidden while a
+   * detail panel covers the active tab so it never overlaps panel bottoms.
+   */
+  @Builder
+  private buildFriendsEntryLayer(): void {
+    Column() {
+      Blank()
+      Row({ space: 10 }) {
+        Stack({ alignContent: Alignment.Center }) {
+          Column() {}
+            .width(32)
+            .height(32)
+            .borderRadius(16)
+            .backgroundColor(SteamArkTheme.accent(this.isDarkMode))
+          SymbolGlyph($r('sys.symbol.person_2'))
+            .fontSize(16)
+            .fontColor([SteamArkTheme.onAccent(this.isDarkMode)])
+        }
+        Column({ space: 1 }) {
+          Text($r('app.string.steam_home_friends_button'))
+            .fontSize(13)
+            .fontWeight(FontWeight.Medium)
+            .fontColor(SteamArkTheme.textPrimary(this.isDarkMode))
+            .maxLines(1)
+          Text(this.friendsOnlineSubtitle())
+            .fontSize(10)
+            .fontColor(SteamArkTheme.textSecondary(this.isDarkMode))
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+        }
+        .alignItems(HorizontalAlign.Start)
+        SymbolGlyph($r('sys.symbol.chevron_right'))
+          .fontSize(14)
+          .fontColor([SteamArkTheme.textSecondary(this.isDarkMode)])
+      }
+      .constraintSize({ maxWidth: SteamArkExperiencePolicy.FRIENDS_BAR_MAX_WIDTH })
+      .height(SteamArkExperiencePolicy.FRIENDS_BAR_HEIGHT)
+      .padding({ left: 12, right: 14 })
+      .borderRadius(SteamArkExperiencePolicy.FRIENDS_BAR_HEIGHT / 2)
+      // Material-first surface, matching the floating tab bar: no solid
+      // background fill and no control-level blur tint — only the EXQUISITE
+      // border/glow preset (same material level as the bar) over the
+      // thinnest immersive system material.
+      .border({
+        width: this.friendsEntryMaterialPreset().borderWidth,
+        color: this.friendsEntryMaterialPreset().borderColor
+      })
+      .shadow(this.friendsEntryMaterialPreset().shadowOptions)
+      .systemMaterial(ngfVisualEffectsFacade.buildSystemMaterialForLightEffectControl())
+      .visualEffect(this.friendsEntryMaterialPreset().buildVisualEffect())
+      .scale(this.friendsEntryMaterialPreset().scaleOptions)
+      .translate({
+        x: 0,
+        y: this.friendsBarHidden
+          ? SteamArkExperiencePolicy.FRIENDS_BAR_HEIGHT + SteamArkExperiencePolicy.TAB_BAR_BUTTON_GAP + 16
+          : 0
+      })
+      .opacity(this.friendsBarHidden ? 0 : 1)
+      .hitTestBehavior(this.friendsBarHidden ? HitTestMode.None : HitTestMode.Default)
+      .animation({ duration: 220, curve: Curve.FastOutSlowIn })
+      .accessibilityText($r('app.string.steam_home_friends_button'))
+      .onTouch((event: TouchEvent): void => {
+        if (event.type === TouchType.Down) {
+          this.friendsEntryPressed = true;
+        } else if (event.type === TouchType.Up || event.type === TouchType.Cancel) {
+          this.friendsEntryPressed = false;
+        }
+      })
+      .onClick((): void => {
+        this.publishCapsuleAnchor();
+        if (steamArkFloatingWindowCoordinator.isFriendsWindowShown()) {
+          void steamArkFloatingWindowCoordinator.closeFriends();
+        } else {
+          void steamArkFloatingWindowCoordinator.openFriends(this.selectedAccountId)
+        }
+      })
+    }
+    .width('100%')
+    .height('100%')
+    .justifyContent(FlexAlign.End)
+    .alignItems(HorizontalAlign.Center)
+    .padding({
+      left: SteamArkExperiencePolicy.TAB_BAR_SIDE_MARGIN,
+      right: SteamArkExperiencePolicy.TAB_BAR_SIDE_MARGIN,
+      bottom: this.bottomInsetVp + SteamArkExperiencePolicy.TAB_BAR_HEIGHT +
+        SteamArkExperiencePolicy.TAB_BAR_BUTTON_GAP
+    })
+    .hitTestBehavior(HitTestMode.Transparent)
+  }
+
+  /** Subtitle line of the docked friends bar: live online count or a hint. */
+  private friendsOnlineSubtitle(): ResourceStr {
+    if (this.friendsOnlineCount > 0) {
+      return $r('app.string.steam_home_friends_online_suffix',
+        this.friendsOnlineCount.toString());
+    }
+    return $r('app.string.steam_home_friends_open_hint');
+  }
+
+  /**
+   * Publishes the capsule's screen-space center (px) so the friends floating
+   * window can pop out of and collapse back into exactly this point.
+   */
+  private publishCapsuleAnchor(): void {
+    try {
+      const metrics = display.getDefaultDisplaySync();
+      const density: number = this.getUIContext().vp2px(1);
+      if (density <= 0 || metrics.width <= 0 || metrics.height <= 0) {
+        return;
+      }
+      const centerYVp: number = this.bottomInsetVp +
+        SteamArkExperiencePolicy.TAB_BAR_HEIGHT +
+        SteamArkExperiencePolicy.TAB_BAR_BUTTON_GAP +
+        SteamArkExperiencePolicy.FRIENDS_BAR_HEIGHT / 2;
+      AppStorage.setOrCreate<number>(STEAM_ARK_FRIENDS_ANCHOR_X_PX, metrics.width / 2);
+      AppStorage.setOrCreate<number>(STEAM_ARK_FRIENDS_ANCHOR_Y_PX, metrics.height - centerYVp * density);
+    } catch (error) {
+      SteamArkLog.debug('HomePage', 'capsule anchor publish skipped; errorType=' +
+        SteamArkLog.errorKind(error));
+    }
+  }
+
+  /**
+   * EXQUISITE immersive material surface for the floating friends entry:
+   * strong border point light, white blend press shadow and high glow — the
+   * same material level as the floating bottom tab bar it sits above.
+   */
+  private friendsEntryMaterialPreset(): NGFHdsMaterialSurfacePreset {
+    return NGFHdsEffectPresetFactory.buildMaterialSurfacePreset(
+      hdsMaterial.MaterialLevel.EXQUISITE,
+      this.friendsEntryPressed
+    );
   }
 
   @Builder
@@ -561,7 +783,12 @@ export struct SteamArkHomePage {
       }
     }
     .width('100%')
-    .padding({ left: 16, right: 16, top: this.topInsetVp, bottom: 84 })
+    .padding({
+      left: 16,
+      right: 16,
+      top: this.topInsetVp,
+      bottom: 84 + SteamArkExperiencePolicy.FRIENDS_BAR_RESERVE
+    })
   }
 
   @Builder
@@ -745,6 +972,9 @@ export struct SteamArkHomePage {
     .backgroundEffect(NGFMaterialSurfaceTokens.buildMaterialAwarePanelBackgroundEffect(this.useSysMat))
     .borderRadius(NGFMaterialSurfaceTokens.PANEL_RADIUS)
     .systemMaterial(ngfVisualEffectsFacade.buildSystemMaterialForPanel())
+    .transition(TransitionEffect.OPACITY
+      .combine(TransitionEffect.translate({ y: '12vp' }))
+      .animation({ duration: SteamArkExperiencePolicy.SECTION_EXPAND_DURATION, curve: Curve.EaseOut }))
   }
 
   @Builder
@@ -912,7 +1142,12 @@ export struct SteamArkHomePage {
       .buttonStyle(ButtonStyleMode.TEXTUAL)
       .accessibilityText($r('app.string.steam_home_cards_manage'))
       .onClick((): void => {
-        this.cardManagerVisible = !this.cardManagerVisible;
+        this.getUIContext().animateTo({
+          duration: SteamArkExperiencePolicy.SECTION_EXPAND_DURATION,
+          curve: Curve.EaseOut
+        }, (): void => {
+          this.cardManagerVisible = !this.cardManagerVisible;
+        });
       })
     }
     .width('100%')
@@ -1329,30 +1564,40 @@ export struct SteamArkHomePage {
   }
 
   private toggleHomeCard(id: string): void {
-    const currentIndex: number = this.visibleHomeCardIds.indexOf(id);
-    if (currentIndex >= 0) {
-      if (this.visibleHomeCardIds.length <= 1) {
-        return;
+    this.getUIContext().animateTo({
+      duration: SteamArkExperiencePolicy.SECTION_EXPAND_DURATION,
+      curve: Curve.EaseOut
+    }, (): void => {
+      const currentIndex: number = this.visibleHomeCardIds.indexOf(id);
+      if (currentIndex >= 0) {
+        if (this.visibleHomeCardIds.length <= 1) {
+          return;
+        }
+        this.visibleHomeCardIds.splice(currentIndex, 1);
+      } else {
+        this.visibleHomeCardIds.push(id);
       }
-      this.visibleHomeCardIds.splice(currentIndex, 1);
-    } else {
-      this.visibleHomeCardIds.push(id);
-    }
-    this.visibleHomeCardIds = this.visibleHomeCardIds.slice();
-    this.persistHomeCardPreference();
+      this.visibleHomeCardIds = this.visibleHomeCardIds.slice();
+      this.persistHomeCardPreference();
+    });
   }
 
   private moveHomeCard(id: string, offset: number): void {
-    const currentIndex: number = this.visibleHomeCardIds.indexOf(id);
-    const targetIndex: number = currentIndex + offset;
-    if (currentIndex < 0 || targetIndex < 0 || targetIndex >= this.visibleHomeCardIds.length) {
-      return;
-    }
-    const movingId: string = this.visibleHomeCardIds[currentIndex];
-    this.visibleHomeCardIds[currentIndex] = this.visibleHomeCardIds[targetIndex];
-    this.visibleHomeCardIds[targetIndex] = movingId;
-    this.visibleHomeCardIds = this.visibleHomeCardIds.slice();
-    this.persistHomeCardPreference();
+    this.getUIContext().animateTo({
+      duration: SteamArkExperiencePolicy.SECTION_EXPAND_DURATION,
+      curve: Curve.EaseOut
+    }, (): void => {
+      const currentIndex: number = this.visibleHomeCardIds.indexOf(id);
+      const targetIndex: number = currentIndex + offset;
+      if (currentIndex < 0 || targetIndex < 0 || targetIndex >= this.visibleHomeCardIds.length) {
+        return;
+      }
+      const movingId: string = this.visibleHomeCardIds[currentIndex];
+      this.visibleHomeCardIds[currentIndex] = this.visibleHomeCardIds[targetIndex];
+      this.visibleHomeCardIds[targetIndex] = movingId;
+      this.visibleHomeCardIds = this.visibleHomeCardIds.slice();
+      this.persistHomeCardPreference();
+    });
   }
 
   private actionSummary(): ResourceStr {
@@ -1431,11 +1676,21 @@ export struct SteamArkHomePage {
       return;
     }
     let count: number = 0;
-    for (let index: number = 0; index < snapshot.sessions.length; index++) {
+    for (let index = 0; index < snapshot.sessions.length; index++) {
       count += snapshot.sessions[index].unreadCount;
     }
     this.unreadMessageCount = count;
     this.unreadMessageKnown = this.hasFreshOverviewData(snapshot.updatedAtEpochSeconds);
+    let onlineCount: number = 0;
+    for (let index = 0; index < snapshot.friends.length; index++) {
+      const state: number = snapshot.friends[index].personaState;
+      // Persona 0 is offline and 7 is invisible; every other value is an
+      // online presence variant.
+      if (state >= 1 && state <= 6) {
+        onlineCount++;
+      }
+    }
+    this.friendsOnlineCount = onlineCount;
   }
 
   @Builder
@@ -1517,6 +1772,7 @@ export struct SteamArkHomePage {
         this.buildStartupButton(SteamArkHomeTab.ACCOUNTS, $r('app.string.steam_home_tab_accounts'))
         this.buildStartupButton(SteamArkHomeTab.FARMING, $r('app.string.steam_home_tab_farming'))
         this.buildStartupButton(SteamArkHomeTab.INVENTORY, $r('app.string.steam_home_tab_inventory'))
+        this.buildStartupButton(SteamArkHomeTab.LIBRARY, $r('app.string.steam_home_tab_library'))
       }
       .width('100%')
       Row({ space: 8 }) {
@@ -1615,8 +1871,18 @@ export struct SteamArkHomePage {
       SteamArkMessagesPage({ notificationRequest: SteamArkMessageNavigationRequest.fromRouteParameter(param) })
     } else if (name === SteamArkRouteName.SOCIAL) {
       SteamArkSocialPage()
+    } else if (name === SteamArkRouteName.LIBRARY) {
+      SteamArkLibraryPage()
     } else if (name === SteamArkRouteName.BROWSER) {
       SteamArkBrowserPage({ request: param as SteamArkBrowserRequest })
+    } else if (name === SteamArkRouteName.MARKET_BROWSE) {
+      SteamArkMarketBrowsePage()
+    } else if (name === SteamArkRouteName.CONFIRMATIONS) {
+      SteamArkConfirmationCenterPage()
+    } else if (name === SteamArkRouteName.STORE) {
+      SteamArkStorePage()
+    } else if (name === SteamArkRouteName.GAME_DETAIL) {
+      SteamArkGameDetailHostPage({ request: param as SteamArkGameDetailRequest })
     }
   }
 
@@ -2349,6 +2615,17 @@ export struct SteamArkHomePage {
 @Entry
 @Component
 struct SteamArkHomeEntryPage {
+  onBackPress(): boolean {
+    // The embedded workspace tab has no route stack: when its badge detail
+    // panel is open, consume the back key and close the panel instead of
+    // leaving the app. NavDestination pages intercept their own back events,
+    // so this only fires while the home stack is empty.
+    if (SteamArkPanelBackBridge.requestClose()) {
+      return true;
+    }
+    return false;
+  }
+
   build(): void {
     Column() {
       SteamArkHomePage()

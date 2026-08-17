@@ -1,4 +1,5 @@
 import { SteamAccountProfile, SteamCredentialSet } from 'steam_core';
+import { SteamArkContentLocale } from './SteamArkRegionPolicy';
 
 export enum SteamArkSocialConnectionState {
   DISCONNECTED = 'disconnected',
@@ -182,6 +183,7 @@ export enum SteamArkSocialEventType {
   MESSAGE_ACKNOWLEDGED = 'message_acknowledged',
   MESSAGE_REACTION_CHANGED = 'message_reaction_changed',
   SESSION_NOTICE_CHANGED = 'session_notice_changed',
+  FRIEND_PRESENCE_CHANGED = 'friend_presence_changed',
   ERROR = 'error'
 }
 
@@ -199,6 +201,7 @@ export class SteamArkSocialEvent {
   readonly active: boolean;
   readonly noticeType: number;
   readonly reactorAccountId32: number;
+  readonly friends: Array<SteamArkFriendProfile>;
 
   constructor(
     type: SteamArkSocialEventType,
@@ -213,7 +216,8 @@ export class SteamArkSocialEvent {
     reactorSteamId64: string = '',
     active: boolean = false,
     noticeType: number = 0,
-    reactorAccountId32: number = 0
+    reactorAccountId32: number = 0,
+    friends: Array<SteamArkFriendProfile> = []
   ) {
     this.type = type;
     this.accountId = accountId;
@@ -228,6 +232,7 @@ export class SteamArkSocialEvent {
     this.active = active;
     this.noticeType = noticeType;
     this.reactorAccountId32 = reactorAccountId32;
+    this.friends = friends.slice();
   }
 }
 
@@ -257,5 +262,5 @@ export interface ISteamArkSocialRuntime {
 
 export interface ISteamArkSocialRuntimeFactory {
   create(profile: SteamAccountProfile, credentials: SteamCredentialSet,
-    proxyPassword: string): ISteamArkSocialRuntime;
+    proxyPassword: string, locale?: SteamArkContentLocale | null): ISteamArkSocialRuntime;
 }

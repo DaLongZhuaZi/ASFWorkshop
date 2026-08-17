@@ -18,6 +18,7 @@ import {
 } from 'steam_core';
 import { ASFWorkshopProductIdentity } from '../steamServices/ASFWorkshopProductIdentity';
 import { SteamArkLog } from '../steamServices/SteamArkLogger';
+import { HarmonySteamCmDirectory } from './HarmonySteamCmDirectory';
 
 const TAG: string = 'HarmonySteamCmWireTransport';
 const DEFAULT_USER_AGENT: string = ASFWorkshopProductIdentity.userAgent('SteamCm');
@@ -78,9 +79,10 @@ export class HarmonySteamCmWireTransport implements ISteamCmWireTransport {
   }
 
   async connect(server: string): Promise<void> {
-    const webSocketUrl: string = SteamCmEndpoint.toWebSocketUrl(server);
     SteamArkLog.info(TAG, 'CM WebSocket connect started; serverConfigured=' + String(server.trim().length > 0));
     try {
+      const webSocketUrl: string = SteamCmEndpoint.toWebSocketUrl(
+        await this.resolveTargetServer(server));
       await this.client.connect(webSocketUrl, this.options.toWebSocketOptions());
       SteamArkLog.info(TAG, 'CM WebSocket connect completed');
     } catch (error) {
@@ -94,6 +96,27 @@ export class HarmonySteamCmWireTransport implements ISteamCmWireTransport {
         SteamArkLog.errorKind(normalized) + ', code=' + normalized.code.toString());
       throw normalized;
     }
+  }
+
+  /**
+   * Replaces the static default endpoint with a live ISteamDirectory pick.
+   * Explicit server overrides (e.g. a user-configured CM host) pass through.
+   */
+  private async resolveTargetServer(server: string): Promise<string> {
+    if (server.trim() !== SteamCmEndpoint.DEFAULT_SERVER) {
+      return server;
+    }
+    try {
+      const resolved: string = await HarmonySteamCmDirectory.resolveWebSocketServer(this.options.proxy);
+      if (resolved.length > 0 && resolved !== SteamCmEndpoint.DEFAULT_SERVER) {
+        SteamArkLog.info(TAG, 'CM directory endpoint selected; rotated=true');
+        return resolved;
+      }
+    } catch (error) {
+      SteamArkLog.warn(TAG, 'CM directory resolution failed; errorType=' +
+        SteamArkLog.errorKind(error) + '; keeping static default');
+    }
+    return server;
   }
 
   async send(payload: Uint8Array): Promise<void> {

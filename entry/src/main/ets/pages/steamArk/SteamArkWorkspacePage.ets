@@ -35,7 +35,14 @@ import {
 } from '../../steamServices';
 import { SteamArkTheme } from './SteamArkTheme';
 import { steamArkTabScrollers } from './SteamArkTabScrollers';
-import { SteamArkBrowserRequest, SteamArkRouteName } from './SteamArkRoutes';
+import { SteamArkBadgeDetailPage } from './SteamArkBadgeDetailPage';
+import { SteamArkPanelBackBridge } from './SteamArkPanelBackBridge';
+import {
+  SteamArkBadgeDetailRequest,
+  SteamArkBadgeKind,
+  SteamArkBrowserRequest,
+  SteamArkRouteName
+} from './SteamArkRoutes';
 import { SteamArkNavigationBridge } from './SteamArkNavigationBridge';
 import { SteamArkPageWindowName, SteamArkPageWindowSupport } from './SteamArkPageWindowSupport';
 import { SteamArkProfileBackground } from './SteamArkProfileBackground';
@@ -67,6 +74,8 @@ class SteamCardInventoryGroup {
 }
 
 const FARMING_GAMES_AUTO_REFRESH_INTERVAL_MS: number = 5 * 60 * 1000;
+const BADGE_PANEL_TOP_BAR_HEIGHT: number = 44;
+const BADGE_PANEL_TOP_BAR_TOP: number = SteamArkTheme.CONTENT_TOP_INSET - BADGE_PANEL_TOP_BAR_HEIGHT;
 
 @Component
 export struct SteamArkWorkspacePage {
@@ -97,10 +106,12 @@ export struct SteamArkWorkspacePage {
   @State private cardItemsRefreshing: boolean = false;
   @State private cardItemsLoaded: boolean = false;
   @State private cardItemsRefreshFailed: boolean = false;
+  @State private badgeDetailVisible: boolean = false;
   @State private gridColumns: number = 2;
   @State private stateReady: boolean = false;
   @StorageProp('ngf_is_dark_mode') private isDarkMode: boolean = false;
   @StorageProp('steam_ark_profile_background_url') private profileBackgroundUrl: string = '';
+  @StorageProp('steam_ark_profile_background_enabled') private backgroundEnabled: boolean = true;
   @StorageProp('ngf_visual_effects_should_use_system_material_surface') private useSysMat: boolean = true;
   private readonly scroller: Scroller = steamArkTabScrollers.workspace;
   private isPageActive: boolean = false;
@@ -111,6 +122,7 @@ export struct SteamArkWorkspacePage {
   private lastFarmingGamesRefreshAccountId: string = '';
   private lastFarmingGamesRefreshAtMs: number = 0;
   private coordinatorFarmingUpdatedAtEpochSeconds: number = 0;
+  private badgeDetailRequest: SteamArkBadgeDetailRequest = new SteamArkBadgeDetailRequest();
   private readonly stateListener: SteamArkStateListener = (snapshot: SteamArkStateSnapshot): void => {
     if (!this.isPageActive) {
       return;
@@ -142,6 +154,12 @@ export struct SteamArkWorkspacePage {
     this.gridColumns = this.resolveGridColumns();
     if (this.embedded) {
       this.topInsetVp = this.contentTopInsetVp;
+      SteamArkPanelBackBridge.registerCloseHandler(
+        SteamArkPanelBackBridge.BADGE_PANEL,
+        SteamArkPanelBackBridge.TAB_FARMING,
+        (): void => {
+          this.closeBadgeDetail();
+        });
     } else {
       SteamArkPageWindowSupport.loadDynamicTopInset(
         this.getUIContext(),
@@ -172,6 +190,10 @@ export struct SteamArkWorkspacePage {
     this.farmingGamesRequestVersion += 1;
     this.refreshingFarmingGamesForAccountId = '';
     this.farmingGamesRefreshing = false;
+    if (this.embedded) {
+      SteamArkPanelBackBridge.unregisterCloseHandler(SteamArkPanelBackBridge.BADGE_PANEL);
+      SteamArkPanelBackBridge.setVisible(SteamArkPanelBackBridge.BADGE_PANEL, false);
+    }
     steamArkStateService.unsubscribe('SteamArkWorkspacePage');
     steamArkFarmingService.unsubscribe('SteamArkWorkspacePage');
     steamArkSyncCoordinator.unsubscribe('SteamArkWorkspacePage');
@@ -196,15 +218,20 @@ export struct SteamArkWorkspacePage {
         true,
         false
       ))
-      .backgroundImage(this.profileBackgroundUrl)
+      .backgroundImage(this.backgroundEnabled ? this.profileBackgroundUrl : '')
       .backgroundImageSize(ImageSize.Cover)
       .ignoreLayoutSafeArea([LayoutSafeAreaType.SYSTEM], [LayoutSafeAreaEdge.TOP, LayoutSafeAreaEdge.BOTTOM])
+      .hideTitleBar(this.badgeDetailVisible)
       .bindToScrollable([this.scroller])
       .onReady((context: NavDestinationContext): void => {
         this.pathStack = context.pathStack;
       })
       .onBackPressed((): boolean => {
         SteamArkPageWindowSupport.restoreHome();
+        if (this.badgeDetailVisible) {
+          this.closeBadgeDetail();
+          return true;
+        }
         this.pathStack.pop();
         return true;
       });
@@ -218,6 +245,9 @@ export struct SteamArkWorkspacePage {
         SteamArkProfileBackground()
       }
 
+      // The list stays mounted while the badge detail covers it, so tile
+      // geometry never resets and the close-direction geometryTransition
+      // always flies back to the real tile position.
       Scroll(this.scroller) {
         Column({ space: 12 }) {
           if (!this.stateReady) {
@@ -250,7 +280,9 @@ export struct SteamArkWorkspacePage {
           left: 16,
           right: 16,
           top: this.embedded ? this.contentTopInsetVp : this.topInsetVp,
-          bottom: this.embedded ? 84 : 92
+          bottom: this.embedded
+            ? 84 + SteamArkExperiencePolicy.FRIENDS_BAR_RESERVE
+            : 92
         })
       }
       .width('100%')
@@ -260,6 +292,21 @@ export struct SteamArkWorkspacePage {
       .nestedScroll({ scrollForward: NestedScrollMode.PARENT_FIRST, scrollBackward: NestedScrollMode.SELF_FIRST })
       .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
       .backgroundColor($r('app.color.background_transparent'))
+      .onDidScroll((_xOffset: number, yOffset: number): void => {
+        if (this.embedded) {
+          steamArkTabScrollers.notifyScrollDelta(yOffset);
+        }
+      })
+
+      if (this.badgeDetailVisible) {
+        Stack({ alignContent: Alignment.TopStart }) {
+          SteamArkBadgeDetailPage({ request: this.badgeDetailRequest })
+          this.buildBadgePanelTopBar()
+        }
+        .width('100%')
+        .height('100%')
+        .transition(SteamArkExperiencePolicy.seamlessBranchTransition())
+      }
     }
     .width('100%')
     .height('100%')
@@ -267,6 +314,39 @@ export struct SteamArkWorkspacePage {
       ? $r('app.color.background_transparent') : SteamArkTheme.background(this.isDarkMode))
     .opacity(this.stateReady && !this.farmingGamesRefreshing && !this.cardItemsRefreshing ? 1 : 0.9)
     .animation({ duration: SteamArkExperiencePolicy.CONTENT_REFRESH_DURATION, curve: Curve.EaseOut })
+  }
+
+  @Builder
+  private buildBadgePanelTopBar(): void {
+    Row({ space: 10 }) {
+      Stack({ alignContent: Alignment.Center }) {
+        SymbolGlyph($r('sys.symbol.chevron_left'))
+          .fontSize(20)
+          .fontColor([SteamArkTheme.textPrimary(this.isDarkMode)])
+      }
+      .width(40)
+      .height(40)
+      .borderRadius(20)
+      .backgroundColor(NGFMaterialSurfaceTokens.buildMaterialAwareSurfaceBackground(
+        SteamArkTheme.surfaceControl(this.isDarkMode), this.useSysMat))
+      .backgroundEffect(NGFMaterialSurfaceTokens.buildMaterialAwareControlBackgroundEffect(this.useSysMat))
+      .id('steam-ark-badge-panel-back')
+      .onClick((): void => {
+        this.closeBadgeDetail();
+      })
+
+      Text(this.badgeDetailRequest.name.length > 0
+        ? this.badgeDetailRequest.name
+        : $r('app.string.steam_badge_detail_subtitle'))
+        .fontSize(17)
+        .fontWeight(FontWeight.Medium)
+        .fontColor(SteamArkTheme.textPrimary(this.isDarkMode))
+        .maxLines(1)
+        .textOverflow({ overflow: TextOverflow.Ellipsis })
+        .layoutWeight(1)
+    }
+    .width('100%')
+    .padding({ left: 12, right: 16, top: BADGE_PANEL_TOP_BAR_TOP, bottom: 6 })
   }
 
   @Builder
@@ -377,6 +457,36 @@ export struct SteamArkWorkspacePage {
           .fontColor(SteamArkTheme.textMuted(this.isDarkMode))
       }
 
+      if (this.uncraftedBadges().length > 0) {
+        Divider().color(SteamArkTheme.divider(this.isDarkMode))
+        Row({ space: 8 }) {
+          SymbolGlyph($r('sys.symbol.wand_and_stars'))
+            .fontSize(19)
+            .fontColor([SteamArkTheme.textSecondary(this.isDarkMode)])
+          Text($r('app.string.steam_workspace_badges_uncrafted_title'))
+            .fontSize(15)
+            .fontWeight(FontWeight.Medium)
+            .fontColor(SteamArkTheme.textPrimary(this.isDarkMode))
+        }
+        .width('100%')
+        Grid() {
+          ForEach(this.uncraftedBadges(), (game: SteamGameDrop) => {
+            GridItem() {
+              this.buildUncraftedBadgeTile(game)
+            }
+          }, (game: SteamGameDrop): string => game.appId)
+        }
+        .width('100%')
+        .columnsTemplate(this.gridTemplate())
+        .columnsGap(10)
+        .rowsGap(10)
+      } else {
+        Text($r('app.string.steam_workspace_badges_uncrafted_empty'))
+          .width('100%')
+          .fontSize(12)
+          .fontColor(SteamArkTheme.textMuted(this.isDarkMode))
+      }
+
       Divider().color(SteamArkTheme.divider(this.isDarkMode))
       Row({ space: 8 }) {
         SymbolGlyph($r('sys.symbol.person_2'))
@@ -463,12 +573,19 @@ export struct SteamArkWorkspacePage {
   @Builder
   private buildGameBadgeTile(game: SteamGameDrop): void {
     Column({ space: 6 }) {
-      Image(game.badgeImageUrl.length > 0 ? game.badgeImageUrl : game.imageUrl)
-        .width('100%')
-        .height(86)
-        .objectFit(ImageFit.Contain)
-        .borderRadius(8)
-        .backgroundColor(Color.Transparent)
+      if (this.isOpenGameBadgeTile(game.appId)) {
+        this.buildBadgeTilePlaceholder()
+      } else {
+        Image(game.badgeImageUrl.length > 0 ? game.badgeImageUrl : game.imageUrl)
+          .width('100%')
+          .height(86)
+          .objectFit(ImageFit.Contain)
+          .borderRadius(8)
+          .backgroundColor(Color.Transparent)
+          .clip(true)
+          .geometryTransition(SteamArkBadgeDetailRequest.geometryId(SteamArkBadgeKind.GAME, game.appId, ''))
+          .transition(TransitionEffect.OPACITY)
+      }
       Text(game.name.length > 0 ? game.name : game.appId)
         .width('100%')
         .fontSize(12)
@@ -477,13 +594,15 @@ export struct SteamArkWorkspacePage {
         .textAlign(TextAlign.Center)
         .maxLines(2)
         .textOverflow({ overflow: TextOverflow.Ellipsis })
-      Row({ space: 3 }) {
-        Text($r('app.string.steam_workspace_badge_level_prefix'))
-          .fontSize(11)
-          .fontColor(SteamArkTheme.textSecondary(this.isDarkMode))
-        Text(game.badgeLevel.toString())
-          .fontSize(11)
-          .fontColor(SteamArkTheme.textSecondary(this.isDarkMode))
+      if (game.badgeLevel > 0) {
+        Row({ space: 3 }) {
+          Text($r('app.string.steam_workspace_badge_level_prefix'))
+            .fontSize(11)
+            .fontColor(SteamArkTheme.textSecondary(this.isDarkMode))
+          Text(game.badgeLevel.toString())
+            .fontSize(11)
+            .fontColor(SteamArkTheme.textSecondary(this.isDarkMode))
+        }
       }
     }
     .width('100%')
@@ -499,23 +618,77 @@ export struct SteamArkWorkspacePage {
     })
     .shadow(NGFMaterialSurfaceTokens.buildMaterialAwareControlShadow(this.useSysMat))
     .systemMaterial(ngfVisualEffectsFacade.buildSystemMaterialForClickablePanel())
-      .onClick((): void => {
-        this.openExternalUrl(this.normalizeSteamUrl(
-          game.badgeUrl,
-          'https://steamcommunity.com/my/gamecards/' + game.appId + '/'
-        ));
-      })
+    .onClick((): void => {
+      this.openGameBadgeDetail(game);
+    })
+  }
+
+  @Builder
+  private buildUncraftedBadgeTile(game: SteamGameDrop): void {
+    Column({ space: 6 }) {
+      if (this.isOpenGameBadgeTile(game.appId)) {
+        this.buildBadgeTilePlaceholder()
+      } else {
+        Image(game.imageUrl)
+          .width('100%')
+          .height(86)
+          .objectFit(ImageFit.Contain)
+          .borderRadius(8)
+          .backgroundColor(Color.Transparent)
+          .clip(true)
+          .geometryTransition(SteamArkBadgeDetailRequest.geometryId(SteamArkBadgeKind.GAME, game.appId, ''))
+          .transition(TransitionEffect.OPACITY)
+          .opacity(0.55)
+      }
+      Text(game.name.length > 0 ? game.name : game.appId)
+        .width('100%')
+        .fontSize(12)
+        .fontWeight(FontWeight.Medium)
+        .fontColor(SteamArkTheme.textSecondary(this.isDarkMode))
+        .textAlign(TextAlign.Center)
+        .maxLines(2)
+        .textOverflow({ overflow: TextOverflow.Ellipsis })
+      Text(this.uncraftedBadgeStatus(game))
+        .width('100%')
+        .fontSize(10)
+        .fontColor(SteamArkTheme.textMuted(this.isDarkMode))
+        .textAlign(TextAlign.Center)
+        .maxLines(2)
+        .textOverflow({ overflow: TextOverflow.Ellipsis })
+    }
+    .width('100%')
+    .padding(8)
+    .backgroundColor(NGFMaterialSurfaceTokens.buildMaterialAwareSurfaceBackground(
+      SteamArkTheme.surfaceControl(this.isDarkMode), this.useSysMat))
+    .backgroundEffect(NGFMaterialSurfaceTokens.buildMaterialAwareControlBackgroundEffect(this.useSysMat))
+    .borderRadius(NGFMaterialSurfaceTokens.CONTROL_RADIUS)
+    .border({
+      width: 1,
+      color: SteamArkTheme.textMuted(this.isDarkMode),
+      style: BorderStyle.Dashed
+    })
+    .opacity(0.85)
+    .onClick((): void => {
+      this.openGameBadgeDetail(game);
+    })
   }
 
   @Builder
   private buildCommunityBadgeTile(badge: SteamCommunityBadge): void {
     Column({ space: 6 }) {
-      Image(badge.imageUrl)
-        .width('100%')
-        .height(86)
-        .objectFit(ImageFit.Contain)
-        .borderRadius(8)
-        .backgroundColor(Color.Transparent)
+      if (this.isOpenCommunityBadgeTile(badge.badgeId)) {
+        this.buildBadgeTilePlaceholder()
+      } else {
+        Image(badge.imageUrl)
+          .width('100%')
+          .height(86)
+          .objectFit(ImageFit.Contain)
+          .borderRadius(8)
+          .backgroundColor(Color.Transparent)
+          .clip(true)
+          .geometryTransition(SteamArkBadgeDetailRequest.geometryId(SteamArkBadgeKind.COMMUNITY, '', badge.badgeId))
+          .transition(TransitionEffect.OPACITY)
+      }
       Text(badge.name)
         .width('100%')
         .fontSize(12)
@@ -546,9 +719,9 @@ export struct SteamArkWorkspacePage {
     })
     .shadow(NGFMaterialSurfaceTokens.buildMaterialAwareControlShadow(this.useSysMat))
     .systemMaterial(ngfVisualEffectsFacade.buildSystemMaterialForClickablePanel())
-      .onClick((): void => {
-        this.openExternalUrl(this.normalizeSteamUrl(badge.badgeUrl, 'https://steamcommunity.com/my/badges/'));
-      })
+    .onClick((): void => {
+      this.openCommunityBadgeDetail(badge);
+    })
   }
 
   @Builder
@@ -1106,6 +1279,107 @@ export struct SteamArkWorkspacePage {
     this.pathStack.pushPathByName(routeName, null);
   }
 
+  private openGameBadgeDetail(game: SteamGameDrop): void {
+    const request: SteamArkBadgeDetailRequest = new SteamArkBadgeDetailRequest(
+      SteamArkBadgeKind.GAME,
+      game.appId,
+      '',
+      game.name.length > 0 ? game.name : game.appId,
+      game.badgeImageUrl.length > 0 ? game.badgeImageUrl : game.imageUrl,
+      game.badgeLevel,
+      0,
+      game.hoursPlayed,
+      game.cardsRemaining,
+      game.badgeCrafted,
+      game.badgeUrl,
+      game.storeUrl
+    );
+    this.openBadgeDetail(request);
+  }
+
+  private openCommunityBadgeDetail(badge: SteamCommunityBadge): void {
+    const request: SteamArkBadgeDetailRequest = new SteamArkBadgeDetailRequest(
+      SteamArkBadgeKind.COMMUNITY,
+      '',
+      badge.badgeId,
+      badge.name,
+      badge.imageUrl,
+      0,
+      badge.experience,
+      0,
+      0,
+      true,
+      badge.badgeUrl,
+      ''
+    );
+    this.openBadgeDetail(request);
+  }
+
+  /** True when this game-badge tile is the one whose detail is currently open. */
+  private isOpenGameBadgeTile(appId: string): boolean {
+    return this.badgeDetailVisible &&
+      this.badgeDetailRequest.kind === SteamArkBadgeKind.GAME &&
+      this.badgeDetailRequest.appId === appId;
+  }
+
+  /** True when this community-badge tile is the one whose detail is open. */
+  private isOpenCommunityBadgeTile(badgeId: string): boolean {
+    return this.badgeDetailVisible &&
+      this.badgeDetailRequest.kind === SteamArkBadgeKind.COMMUNITY &&
+      this.badgeDetailRequest.badgeId === badgeId;
+  }
+
+  /**
+   * Same-size stand-in for the opened tile image. Unmounting the real image
+   * gives the geometryTransition pair a genuine disappear on open and a
+   * genuine appear on close, while the persistent list keeps its layout.
+   */
+  @Builder
+  private buildBadgeTilePlaceholder(): void {
+    Column()
+      .width('100%')
+      .height(86)
+  }
+
+  private openBadgeDetail(request: SteamArkBadgeDetailRequest): void {
+    if (!this.isPageActive) {
+      return;
+    }
+    const identity: string = request.kind === SteamArkBadgeKind.COMMUNITY ? request.badgeId : request.appId;
+    SteamArkLog.info('WorkspacePage', 'badge detail opened; kind=' + String(request.kind) +
+      ', id=' + identity);
+    this.badgeDetailRequest = request;
+    if (this.embedded) {
+      SteamArkPanelBackBridge.setVisible(SteamArkPanelBackBridge.BADGE_PANEL, true);
+    }
+    // Official 一镜到底 (persistent-source variant): the list stays mounted;
+    // the opened tile image unmounts while the detail is open so the pair has
+    // a genuine appear/disappear in both flight directions, and the flight
+    // always ends at the tile's real, never-reset position.
+    this.getUIContext().animateTo({
+      duration: SteamArkExperiencePolicy.EXPAND_TRANSITION_DURATION,
+      curve: Curve.FastOutSlowIn
+    }, (): void => {
+      this.badgeDetailVisible = true;
+    });
+  }
+
+  private closeBadgeDetail(): void {
+    if (!this.badgeDetailVisible) {
+      return;
+    }
+    SteamArkLog.info('WorkspacePage', 'badge detail closed');
+    if (this.embedded) {
+      SteamArkPanelBackBridge.setVisible(SteamArkPanelBackBridge.BADGE_PANEL, false);
+    }
+    this.getUIContext().animateTo({
+      duration: SteamArkExperiencePolicy.EXPAND_TRANSITION_DURATION,
+      curve: Curve.FastOutSlowIn
+    }, (): void => {
+      this.badgeDetailVisible = false;
+    });
+  }
+
   private workspaceActionId(actionKey: number): string {
     switch (actionKey) {
       case SteamWorkspaceActionKey.ACCOUNT:
@@ -1317,11 +1591,29 @@ export struct SteamArkWorkspacePage {
     const badges: Array<SteamGameDrop> = [];
     for (let index = 0; index < this.gameBadgeGames.length; index++) {
       const game: SteamGameDrop = this.gameBadgeGames[index];
-      if (game.appId !== '753' && game.badgeLevel > 0) {
+      if (game.appId !== '753' && game.badgeCrafted) {
         badges.push(game);
       }
     }
     return badges;
+  }
+
+  private uncraftedBadges(): Array<SteamGameDrop> {
+    const badges: Array<SteamGameDrop> = [];
+    for (let index = 0; index < this.gameBadgeGames.length; index++) {
+      const game: SteamGameDrop = this.gameBadgeGames[index];
+      if (game.appId !== '753' && !game.badgeCrafted) {
+        badges.push(game);
+      }
+    }
+    return badges;
+  }
+
+  private uncraftedBadgeStatus(game: SteamGameDrop): ResourceStr {
+    if (game.cardsRemaining > 0) {
+      return $r('app.string.steam_workspace_badges_uncrafted_remaining', game.cardsRemaining);
+    }
+    return $r('app.string.steam_workspace_badges_uncrafted_ready');
   }
 
   private cardItemsEmptyState(): ResourceStr {

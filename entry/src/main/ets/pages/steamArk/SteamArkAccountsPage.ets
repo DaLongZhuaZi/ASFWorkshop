@@ -1215,48 +1215,45 @@ export struct SteamArkAccountsPage {
         void this.selectAccount(account.profile.accountId);
       }
     })
-    .bindContextMenu(this.accountMenuItems(account), ResponseType.LongPress)
+    .bindContextMenu(this.buildAccountContextMenu(account), ResponseType.LongPress)
   }
 
-  private accountMenuItems(account: SteamArkAccountSnapshot): Array<MenuElement> {
-    const items: Array<MenuElement> = [];
-    if (account.profile.accountId !== this.selectedAccountId) {
-      const selectItem: MenuElement = {
-        value: $r('app.string.steam_accounts_select'),
-        enabled: !this.isAccountBusy(),
-        action: (): void => {
-          void this.selectAccount(account.profile.accountId);
-        }
-      };
-      items.push(selectItem);
-    }
-    if (account.session.state === SteamSessionState.LOGGED_ON) {
-      const refreshItem: MenuElement = {
-        value: $r('app.string.steam_accounts_auth_refresh'),
-        enabled: !this.isAccountBusy(),
-        action: (): void => {
-          this.handleAuthenticationAction(account.profile.accountId, SteamArkAuthActionKind.REFRESH);
-        }
-      };
-      const signOutItem: MenuElement = {
-        value: $r('app.string.steam_accounts_sign_out'),
-        enabled: !this.isAccountBusy(),
-        action: (): void => {
-          this.handleAuthenticationAction(account.profile.accountId, SteamArkAuthActionKind.SIGN_OUT);
-        }
-      };
-      items.push(refreshItem);
-      items.push(signOutItem);
-    }
-    const removeItem: MenuElement = {
-      value: $r('app.string.steam_accounts_remove_confirm'),
-      enabled: !this.isAccountBusy(),
-      action: (): void => {
-        this.confirmRemoveAccount(account.profile.accountId);
+  @Builder
+  private buildAccountContextMenu(account: SteamArkAccountSnapshot): void {
+    Menu() {
+      if (account.profile.accountId !== this.selectedAccountId) {
+        MenuItem({
+          content: $r('app.string.steam_accounts_select')
+        })
+          .enabled(!this.isAccountBusy())
+          .onClick((): void => {
+            void this.selectAccount(account.profile.accountId);
+          })
       }
-    };
-    items.push(removeItem);
-    return items;
+      if (account.session.state === SteamSessionState.LOGGED_ON) {
+        MenuItem({
+          content: $r('app.string.steam_accounts_auth_refresh')
+        })
+          .enabled(!this.isAccountBusy())
+          .onClick((): void => {
+            this.handleAuthenticationAction(account.profile.accountId, SteamArkAuthActionKind.REFRESH);
+          })
+        MenuItem({
+          content: $r('app.string.steam_accounts_sign_out')
+        })
+          .enabled(!this.isAccountBusy())
+          .onClick((): void => {
+            this.handleAuthenticationAction(account.profile.accountId, SteamArkAuthActionKind.SIGN_OUT);
+          })
+      }
+      MenuItem({
+        content: $r('app.string.steam_accounts_remove_confirm')
+      })
+        .enabled(!this.isAccountBusy())
+        .onClick((): void => {
+          this.confirmRemoveAccount(account.profile.accountId);
+        })
+    }
   }
 
   @Builder

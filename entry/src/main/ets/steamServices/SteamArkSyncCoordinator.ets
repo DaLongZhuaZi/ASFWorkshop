@@ -5,6 +5,7 @@ import {
   SteamSessionState
 } from 'steam_core';
 import { SteamArkLog } from './SteamArkLogger';
+import { SteamArkContentLocale, SteamArkRegionPolicy } from './SteamArkRegionPolicy';
 import {
   SteamArkAccountSnapshot,
   SteamArkStateListener,
@@ -16,6 +17,9 @@ import {
   SteamArkFarmingService,
   steamArkFarmingService
 } from './SteamArkFarmingService';
+import {
+  steamArkGameLibraryService
+} from './SteamArkGameLibraryService';
 import {
   SteamArkSocialService,
   steamArkSocialService
@@ -42,6 +46,7 @@ const TAG: string = 'SteamArkSyncCoordinator';
 const INVENTORY_FRESHNESS_SECONDS: number = 5 * 60;
 const BADGE_FRESHNESS_SECONDS: number = 5 * 60;
 const PROFILE_FRESHNESS_SECONDS: number = 15 * 60;
+const LIBRARY_FRESHNESS_SECONDS: number = 15 * 60;
 const SOCIAL_FRESHNESS_SECONDS: number = 5 * 60;
 const MAX_FUTURE_SYNC_CLOCK_SKEW_SECONDS: number = 5 * 60;
 const DEFAULT_INVENTORY_APP_ID: string = '753';
@@ -62,6 +67,7 @@ class SteamArkSyncRecord {
   lastCompletedAtEpochSeconds: number = 0;
   profileUpdatedAtEpochSeconds: number = 0;
   inventoryUpdatedAtEpochSeconds: number = 0;
+  libraryUpdatedAtEpochSeconds: number = 0;
   farmingUpdatedAtEpochSeconds: number = 0;
   socialUpdatedAtEpochSeconds: number = 0;
   messagesUpdatedAtEpochSeconds: number = 0;
@@ -296,6 +302,7 @@ export class SteamArkSyncCoordinator {
     try {
       await this.runStage(accountId, record, generation, SteamArkSyncStage.PROFILE);
       await this.runStage(accountId, record, generation, SteamArkSyncStage.INVENTORY);
+      await this.runStage(accountId, record, generation, SteamArkSyncStage.LIBRARY);
       await this.runStage(accountId, record, generation, SteamArkSyncStage.FARMING);
       await this.runStage(accountId, record, generation, SteamArkSyncStage.SOCIAL);
       await this.runStage(accountId, record, generation, SteamArkSyncStage.MESSAGES);
@@ -331,6 +338,8 @@ export class SteamArkSyncCoordinator {
         await this.syncProfile(accountId, record, generation);
       } else if (stage === SteamArkSyncStage.INVENTORY) {
         await this.syncInventory(accountId, record, generation);
+      } else if (stage === SteamArkSyncStage.LIBRARY) {
+        await this.syncLibrary(accountId, record, generation);
       } else if (stage === SteamArkSyncStage.FARMING) {
         await this.syncFarming(accountId, record, generation);
       } else if (stage === SteamArkSyncStage.SOCIAL) {
@@ -388,6 +397,10 @@ export class SteamArkSyncCoordinator {
     let pagesFetched: number = 0;
     const seenStartAssetIds: Set<string> = new Set<string>();
 
+    const locale: SteamArkContentLocale | null = this.stateService.resolveAccountLocale(accountId);
+    if (locale === null) {
+      return;
+    }
     if (refreshFirstPage) {
       const firstQuery = new SteamInventoryQuery(
         DEFAULT_INVENTORY_APP_ID,
@@ -398,7 +411,7 @@ export class SteamArkSyncCoordinator {
         false,
         false,
         '',
-        'english'
+        locale.steamLanguage
       );
       const refreshedFirstPage: SteamInventoryPage = await this.stateService.syncInventory(accountId, firstQuery);
       if (!this.isCurrent(generation)) {
@@ -427,6 +440,8 @@ export class SteamArkSyncCoordinator {
       return;
     }
 
+    SteamArkLog.debug(TAG, 'inventory synchronization locale; account=' + SteamArkLog.accountId(accountId) +
+      ', language=' + locale.steamLanguage + ', currency=' + locale.currencyCode);
     SteamArkLog.debug(TAG, 'inventory continuation synchronization started; account=' +
       SteamArkLog.accountId(accountId) + ', cachedPages=' + cachedPages.length.toString() +
       ', refreshStartIndex=' + refreshStartIndex.toString());
@@ -478,6 +493,29 @@ export class SteamArkSyncCoordinator {
     }
     SteamArkLog.info(TAG, 'inventory continuation synchronization completed; account=' +
       SteamArkLog.accountId(accountId) + ', fetchedPages=' + pagesFetched.toString());
+  }
+
+  private async syncLibrary(accountId: string, record: SteamArkSyncRecord, generation: number): Promise<void> {
+    record.stage = SteamArkSyncStage.LIBRARY;
+    this.emit();
+    if (!this.isCurrent(generation)) {
+      return;
+    }
+    const cached = steamArkGameLibraryService.getSnapshot(accountId);
+    const cachedUpdatedAtEpochSeconds: number = cached !== null ? cached.updatedAtEpochSeconds : 0;
+    if (this.isValidSyncTimestamp(cachedUpdatedAtEpochSeconds) &&
+      !this.isStale(cachedUpdatedAtEpochSeconds, LIBRARY_FRESHNESS_SECONDS)) {
+      record.libraryUpdatedAtEpochSeconds = cachedUpdatedAtEpochSeconds;
+      return;
+    }
+    const snapshot = await steamArkGameLibraryService.sync(accountId);
+    if (!this.isCurrent(generation)) {
+      return;
+    }
+    if (!this.isValidSyncTimestamp(snapshot.updatedAtEpochSeconds)) {
+      throw new Error('game library synchronization timestamp is invalid');
+    }
+    record.libraryUpdatedAtEpochSeconds = snapshot.updatedAtEpochSeconds;
   }
 
   private inventoryRefreshStartIndex(cachedPages: Array<SteamInventoryPage>): number {
@@ -796,7 +834,8 @@ export class SteamArkSyncCoordinator {
         record.inventoryUpdatedAtEpochSeconds,
         record.farmingUpdatedAtEpochSeconds,
         record.socialUpdatedAtEpochSeconds,
-        record.messagesUpdatedAtEpochSeconds
+        record.messagesUpdatedAtEpochSeconds,
+        record.libraryUpdatedAtEpochSeconds
       ),
       record.failure,
       record.stageFailures

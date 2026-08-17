@@ -1,7 +1,9 @@
+import { curves, display, window } from '@kit.ArkUI';
 import { NGFMaterialSurfaceTokens, ngfVisualEffectsFacade } from 'ngf_framework';
 import {
   SteamArkFriendProfile,
   SteamArkChatSession,
+  SteamArkLog,
   SteamArkSocialConnectionState,
   SteamArkSocialSnapshot,
   SteamArkSocialSnapshotListener,
@@ -14,6 +16,9 @@ import { SteamArkTheme } from './SteamArkTheme';
 import { SteamArkExperiencePolicy } from './SteamArkExperiencePolicy';
 import {
   STEAM_ARK_FLOAT_ACCOUNT_KEY,
+  STEAM_ARK_FRIENDS_ANCHOR_X_PX,
+  STEAM_ARK_FRIENDS_ANCHOR_Y_PX,
+  STEAM_ARK_FRIENDS_WINDOW_NAME,
   steamArkFloatingWindowCoordinator
 } from './SteamArkFloatingWindowCoordinator';
 
@@ -48,6 +53,9 @@ struct SteamArkFriendsFloatingPage {
   @State private expandedGameKeys: Array<string> = [];
   @StorageProp('ngf_is_dark_mode') private isDarkMode: boolean = false;
   @StorageProp('ngf_visual_effects_should_use_system_material_surface') private useSysMat: boolean = true;
+  /** Capsule anchor offset (vp): the panel's bottom-center starts/ends here. */
+  private anchorDeltaX: number = 0;
+  private anchorDeltaY: number = 140;
   private refreshTimer: number = -1;
   private closeTimer: number = -1;
   private isPageActive: boolean = false;
@@ -71,17 +79,97 @@ struct SteamArkFriendsFloatingPage {
     }
     steamArkSocialService.subscribe('SteamArkFriendsFloatingPage', this.socialListener);
     steamArkStateService.subscribe('SteamArkFriendsFloatingPage', this.stateListener);
+    steamArkFloatingWindowCoordinator.setFriendsPresentHandler((): boolean => {
+      return this.playCapsulePop();
+    });
+    steamArkFloatingWindowCoordinator.setFriendsCollapseHandler((): Promise<void> => {
+      return this.playCapsuleCollapse();
+    });
     this.applySnapshot(steamArkSocialService.restore(this.accountId));
     this.syncCurrentAccount();
-    this.getUIContext().animateTo({
-      duration: SteamArkExperiencePolicy.FLOAT_WINDOW_ENTER_DURATION,
-      curve: Curve.EaseOut
-    }, (): void => {
-      this.contentVisible = true;
-    });
     this.scheduleSilentRefresh();
   }
 
+  /**
+   * Capsule pop-in: recompute the anchor, then spring out of the capsule.
+   * Returns true when the pop actually played (or is already showing) so the
+   * coordinator can retry while the first page load is still settling.
+   */
+  private playCapsulePop(): boolean {
+    if (!this.isPageActive) {
+      return false;
+    }
+    if (this.contentVisible) {
+      return true;
+    }
+    this.prepareCapsuleAnchor();
+    try {
+      this.getUIContext().animateTo({
+        curve: curves.springMotion(0.38, 0.86)
+      }, (): void => {
+        this.contentVisible = true;
+      });
+    } catch (_error) {
+      // Some form factors reject springMotion at runtime — fall back to a
+      // plain curve so the panel never stays hidden behind a dead handler.
+      this.getUIContext().animateTo({
+        duration: SteamArkExperiencePolicy.FRIENDS_CAPSULE_POP_DURATION,
+        curve: Curve.FastOutSlowIn
+      }, (): void => {
+        this.contentVisible = true;
+      });
+    }
+    return true;
+  }
+
+  /** Capsule collapse: shrink back into the capsule, resolving when done. */
+  private playCapsuleCollapse(): Promise<void> {
+    if (!this.isPageActive || !this.contentVisible) {
+      return Promise.resolve();
+    }
+    this.prepareCapsuleAnchor();
+    return new Promise<void>((resolve: () => void): void => {
+      this.getUIContext().animateTo({
+        duration: SteamArkExperiencePolicy.FRIENDS_CAPSULE_POP_DURATION,
+        curve: curves.cubicBezierCurve(0.3, 0, 0.15, 1),
+        onFinish: (): void => {
+          resolve();
+        }
+      }, (): void => {
+        this.contentVisible = false;
+      });
+    });
+  }
+
+  /**
+   * Capsule pop anchor: converts the main-window capsule's screen position
+   * into this window's local coordinates, so the entrance/collapse transform
+   * grows out of and shrinks back into exactly the capsule on screen.
+   */
+  private prepareCapsuleAnchor(): void {
+    try {
+      const target: window.Window = window.findWindow(STEAM_ARK_FRIENDS_WINDOW_NAME);
+      const rect = target.getWindowProperties().windowRect;
+      const density: number = display.getDefaultDisplaySync().densityPixels;
+      const anchorX: number = AppStorage.get<number>(STEAM_ARK_FRIENDS_ANCHOR_X_PX) ?? -1;
+      const anchorY: number = AppStorage.get<number>(STEAM_ARK_FRIENDS_ANCHOR_Y_PX) ?? -1;
+      if (density <= 0 || rect.width <= 0 || rect.height <= 0 || anchorX <= 0 || anchorY <= 0) {
+        return;
+      }
+      const localXVp: number = (anchorX - rect.left) / density;
+      const localYVp: number = (anchorY - rect.top) / density;
+      const widthVp: number = rect.width / density;
+      const heightVp: number = rect.height / density;
+      // The panel's resting bottom-center (content padding 12) is the point
+      // that must sit on the capsule at the animation extremes.
+      this.anchorDeltaX = localXVp - widthVp / 2;
+      this.anchorDeltaY = localYVp - (heightVp - 12);
+    } catch (error) {
+      SteamArkLog.debug('FriendsFloatingPage', 'capsule anchor fallback applied');
+    }
+  }
+
+  /** Coordinator asked the window to close: collapse back into the capsule. */
   aboutToDisappear(): void {
     this.isPageActive = false;
     if (this.refreshTimer >= 0) {
@@ -90,6 +178,8 @@ struct SteamArkFriendsFloatingPage {
     }
     steamArkSocialService.unsubscribe('SteamArkFriendsFloatingPage');
     steamArkStateService.unsubscribe('SteamArkFriendsFloatingPage');
+    steamArkFloatingWindowCoordinator.setFriendsPresentHandler(null);
+    steamArkFloatingWindowCoordinator.setFriendsCollapseHandler(null);
     if (this.closeTimer >= 0) {
       clearTimeout(this.closeTimer);
       this.closeTimer = -1;
@@ -97,8 +187,13 @@ struct SteamArkFriendsFloatingPage {
   }
 
   build(): void {
+    // Transparent hit-test wrapper: the sub-window surface stays mounted
+    // during the system show/hide transition (~1-2s on some devices); making
+    // the empty root pass touches through removes the invisible "shell"
+    // phase entirely, while the panel below keeps normal touch behavior.
     Column() {
-      this.buildDragHandle()
+      Column() {
+        this.buildDragHandle()
       this.buildHeader()
       Row({ space: 8 }) {
         SymbolGlyph($r('sys.symbol.magnifyingglass'))
@@ -173,34 +268,17 @@ struct SteamArkFriendsFloatingPage {
       } else {
         Scroll() {
           Column({ space: 8 }) {
-            this.buildGameSection(
-              $r('app.string.steam_float_friends_in_game'),
-              $r('sys.symbol.gamecontroller_fill'),
-              this.gameGroups(),
-              this.gameExpanded
-            )
-            this.buildFriendSection(
-              $r('app.string.steam_float_friends_online_group'),
-              $r('sys.symbol.circle_fill'),
-              this.onlineFriends(),
-              this.onlineExpanded,
-              1
-            )
-            this.buildFriendSection(
-              $r('app.string.steam_float_friends_offline_group'),
-              $r('sys.symbol.circle'),
-              this.offlineFriends(),
-              this.offlineExpanded,
-              2
-            )
+            this.buildGameSection()
+            this.buildFriendSection(1)
+            this.buildFriendSection(2)
           }
           .width('100%')
         }
         .layoutWeight(1)
         .width('100%')
         .height(0)
-        .scrollBar(BarState.Auto)
-        .animation({ duration: SteamArkExperiencePolicy.CONTENT_REFRESH_DURATION, curve: Curve.EaseOut })
+        .scrollBar(BarState.Off)
+        .edgeEffect(EdgeEffect.Spring)
       }
     }
     .width('100%')
@@ -218,9 +296,24 @@ struct SteamArkFriendsFloatingPage {
     .shadow(NGFMaterialSurfaceTokens.buildMaterialAwareProminentShadow(this.useSysMat))
     .systemMaterial(ngfVisualEffectsFacade.buildSystemMaterialForProminentPanel())
     .clip(true)
-    .opacity(this.contentVisible ? 1 : 0.01)
-    .translate({ y: this.contentVisible ? 0 : 16 })
-    .animation({ duration: SteamArkExperiencePolicy.FLOAT_WINDOW_ENTER_DURATION, curve: Curve.EaseOut })
+    // Visibility (not opacity): material blur layers keep rendering at
+    // opacity 0, which was the visible "transparent shell". Hidden removes
+    // the whole paint incl. backgroundEffect/systemMaterial.
+    .visibility(this.contentVisible ? Visibility.Visible : Visibility.Hidden)
+    .scale({
+      x: this.contentVisible ? 1 : 0.05,
+      y: this.contentVisible ? 1 : 0.05,
+      centerX: '50%',
+      centerY: '100%'
+    })
+    .translate({
+      x: this.contentVisible ? 0 : this.anchorDeltaX,
+      y: this.contentVisible ? 0 : this.anchorDeltaY
+    })
+    }
+    .width('100%')
+    .height('100%')
+    .hitTestBehavior(HitTestMode.Transparent)
   }
 
   @Builder
@@ -348,13 +441,23 @@ struct SteamArkFriendsFloatingPage {
   }
 
   @Builder
-  private buildGameSection(title: ResourceStr, symbol: Resource, groups: Array<SteamArkFriendGameGroup>,
-    expanded: boolean): void {
-    if (groups.length > 0) {
-      this.buildSectionHeader(title, symbol, this.totalGroupFriends(groups), expanded, 0)
-      if (expanded) {
-        ForEach(groups, (group: SteamArkFriendGameGroup): void => {
-          this.buildGameGroup(group);
+  /**
+   * Section builders read the @State filters/expansion DIRECTLY in their
+   * bodies: @Builder parameters passed by value never re-render on state
+   * changes (official ArkUI rule), which had broken both the section
+   * expand/collapse and the search filtering.
+   */
+  @Builder
+  private buildGameSection(): void {
+    if (this.gameGroups().length > 0) {
+      this.buildSectionHeader(
+        $r('app.string.steam_float_friends_in_game'),
+        $r('sys.symbol.gamecontroller_fill'),
+        0
+      )
+      if (this.gameExpanded) {
+        ForEach(this.gameGroups(), (group: SteamArkFriendGameGroup): void => {
+          this.buildGameGroup(group)
         }, (group: SteamArkFriendGameGroup): string => group.key)
       }
     }
@@ -409,24 +512,30 @@ struct SteamArkFriendsFloatingPage {
   }
 
   @Builder
-  private buildFriendSection(title: ResourceStr, symbol: Resource, friends: Array<SteamArkFriendProfile>,
-    expanded: boolean, section: number): void {
-    if (friends.length > 0) {
-      this.buildSectionHeader(title, symbol, friends.length, expanded, section)
-      if (expanded) {
-        ForEach(friends, (friend: SteamArkFriendProfile) => {
-          this.buildFriend(friend, 12)
-        }, (friend: SteamArkFriendProfile): string => section.toString() + '-' + friend.steamId64)
+  private buildFriendSection(section: number): void {
+    if ((section === 1 ? this.onlineFriends() : this.offlineFriends()).length > 0) {
+      this.buildSectionHeader(
+        section === 1
+          ? $r('app.string.steam_float_friends_online_group')
+          : $r('app.string.steam_float_friends_offline_group'),
+        section === 1 ? $r('sys.symbol.circle_fill') : $r('sys.symbol.circle'),
+        section
+      )
+      if (this.sectionExpanded(section)) {
+        ForEach(section === 1 ? this.onlineFriends() : this.offlineFriends(),
+          (friend: SteamArkFriendProfile) => {
+            this.buildFriend(friend, 12)
+          }, (friend: SteamArkFriendProfile): string => section.toString() + '-' + friend.steamId64)
       }
     }
   }
 
   @Builder
-  private buildSectionHeader(title: ResourceStr, symbol: Resource, count: number,
-    expanded: boolean, section: number): void {
+  private buildSectionHeader(title: ResourceStr, symbol: Resource, section: number): void {
     Button() {
       Row({ space: 8 }) {
-        SymbolGlyph(expanded ? $r('sys.symbol.chevron_down') : $r('sys.symbol.chevron_right'))
+        SymbolGlyph(this.sectionExpanded(section)
+          ? $r('sys.symbol.chevron_down') : $r('sys.symbol.chevron_right'))
           .fontSize(14)
           .fontColor([SteamArkTheme.textPrimary(this.isDarkMode)])
         SymbolGlyph(symbol)
@@ -437,7 +546,7 @@ struct SteamArkFriendsFloatingPage {
           .fontSize(13)
           .fontWeight(FontWeight.Bold)
           .fontColor(SteamArkTheme.textPrimary(this.isDarkMode))
-        Text(count.toString())
+        Text(this.sectionCount(section).toString())
           .fontSize(11)
           .fontColor(SteamArkTheme.textSecondary(this.isDarkMode))
         Blank()
@@ -459,6 +568,26 @@ struct SteamArkFriendsFloatingPage {
     .onClick((): void => {
       this.toggleSection(section);
     })
+  }
+
+  private sectionExpanded(section: number): boolean {
+    if (section === 0) {
+      return this.gameExpanded;
+    }
+    if (section === 1) {
+      return this.onlineExpanded;
+    }
+    return this.offlineExpanded;
+  }
+
+  private sectionCount(section: number): number {
+    if (section === 0) {
+      return this.totalGroupFriends(this.gameGroups());
+    }
+    if (section === 1) {
+      return this.onlineFriends().length;
+    }
+    return this.offlineFriends().length;
   }
 
   private applySnapshot(snapshot: SteamArkSocialSnapshot): void {
@@ -640,12 +769,13 @@ struct SteamArkFriendsFloatingPage {
     if (this.closeTimer >= 0) {
       return;
     }
-    const closingAccountId: string = this.accountId;
-    this.contentVisible = false;
-    this.closeTimer = setTimeout((): void => {
+    this.closeTimer = 1;
+    // User-facing close: collapse into the capsule, then detach the window
+    // surface (the window itself stays alive for the next pop-in).
+    void this.playCapsuleCollapse().then((): void => {
       this.closeTimer = -1;
-      void steamArkFloatingWindowCoordinator.closeFriendsForAccount(closingAccountId);
-    }, SteamArkExperiencePolicy.FLOAT_WINDOW_ENTER_DURATION);
+      void steamArkFloatingWindowCoordinator.hideFriendsWindow();
+    });
   }
 
   private gameLogoUrl(appId: string): string {

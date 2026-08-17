@@ -23,10 +23,16 @@ export { HarmonySteamMessageResolver } from './HarmonySteamMessageResolver';
 export { HarmonySteamSocialRuntime, HarmonySteamSocialRuntimeFactory } from './HarmonySteamSocialRuntime';
 export { HarmonySteamSocialNotificationPublisher } from './HarmonySteamSocialNotificationPublisher';
 export { HarmonySteamMessageNotificationPublisher } from './HarmonySteamMessageNotificationPublisher';
+export { HarmonySteamFarmingNotificationPublisher } from './HarmonySteamFarmingNotificationPublisher';
+export { HarmonySteamConfirmationClient } from './HarmonySteamConfirmationClient';
 export {
   HarmonySteamInventoryAdapter,
   HarmonySteamInventoryAdapterFactory
 } from './HarmonySteamInventoryAdapter';
+export {
+  HarmonySteamGameLibraryAdapter,
+  HarmonySteamGameLibraryAdapterFactory
+} from './HarmonySteamGameLibraryAdapter';
 export {
   HarmonySteamFarmingRuntime,
   HarmonySteamFarmingRuntimeFactory,

@@ -4,6 +4,7 @@ import { SteamArkTheme } from './SteamArkTheme';
 export struct SteamArkProfileBackground {
   @StorageProp('steam_ark_profile_background_url') private imageUrl: string = '';
   @StorageProp('steam_ark_profile_background_tiled') private tiled: boolean = false;
+  @StorageProp('steam_ark_profile_background_enabled') private backgroundEnabled: boolean = true;
   @StorageProp('ngf_is_dark_mode') private isDarkMode: boolean = false;
 
   build(): void {
@@ -13,7 +14,9 @@ export struct SteamArkProfileBackground {
         .height('100%')
         .backgroundColor(SteamArkTheme.background(this.isDarkMode))
 
-      if (this.imageUrl.length > 0) {
+      // When the profile background switch is off, only the default solid
+      // background is painted and the Steam profile artwork is not loaded.
+      if (this.backgroundEnabled && this.imageUrl.length > 0) {
         if (this.tiled) {
           Image(this.imageUrl)
             .width('100%')

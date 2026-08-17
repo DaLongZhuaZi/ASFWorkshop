@@ -22,7 +22,8 @@ export class NGFHttpSession implements IHttpSession {
       headers.set(key, value);
     });
     const cookieHeader = this.cookieJar.getCookieHeader(options.url);
-    if (cookieHeader.length > 0) {
+    if (cookieHeader.length > 0 && !this.hasCallerCookieHeader(options.headers)) {
+      // An explicit caller Cookie header wins; the jar would otherwise drop it.
       headers.set('Cookie', cookieHeader);
     }
     const requestOptions = this.buildOptions(options, headers);
@@ -52,6 +53,16 @@ export class NGFHttpSession implements IHttpSession {
     this.cookieJar.clear();
   }
 
+  private hasCallerCookieHeader(headers: Map<string, string>): boolean {
+    let present = false;
+    headers.forEach((value: string, key: string): void => {
+      if (key.toLowerCase() === 'cookie' && value.length > 0) {
+        present = true;
+      }
+    });
+    return present;
+  }
+
   private buildOptions(options: NGFHttpSessionRequest, headers: Map<string, string>): http.HttpRequestOptions {
     const result: http.HttpRequestOptions = {
       method: this.mapMethod(options.method),
@@ -65,6 +76,10 @@ export class NGFHttpSession implements IHttpSession {
     }
     if (options.proxy.mode === NGFProxyMode.DIRECT) {
       result.usingProxy = false;
+    } else if (options.proxy.mode === NGFProxyMode.SYSTEM) {
+      // NetStack treats an unset usingProxy as "no proxy"; true explicitly asks
+      // for the system default proxy (falls back to direct when none is set).
+      result.usingProxy = true;
     } else if (options.proxy.mode === NGFProxyMode.HTTP) {
       result.usingProxy = options.proxy.toHttpProxy();
     } else if (options.proxy.mode === NGFProxyMode.SOCKS5) {

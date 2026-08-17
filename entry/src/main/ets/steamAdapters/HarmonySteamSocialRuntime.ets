@@ -7,6 +7,7 @@ import {
 } from 'ngf_framework';
 import {
   SteamAccountProfile,
+  SteamClientPersonaStateRequestFlags,
   SteamCmClient,
   SteamCmClientOptions,
   SteamCmDecodedMessage,
@@ -15,6 +16,7 @@ import {
   SteamCmEventType,
   SteamCmUnifiedMessage,
   SteamCredentialSet,
+  SteamFriendListEntry,
   SteamFriendMessage,
   SteamFriendMessageAck,
   SteamFriendMessagePage,
@@ -29,8 +31,10 @@ import {
   SteamJsonParser,
   SteamJsonValue,
   SteamJsonValueKind,
+  SteamPersonaStateEntry,
   SteamPlayerEmoticon,
   SteamPlayerEmoticonCodec,
+  SteamPlayerNicknameEntry,
   SteamProxyKind,
   SteamSessionState
 } from 'steam_core';
@@ -48,6 +52,7 @@ import {
 } from '../steamServices/SteamArkSocialContracts';
 import { ASFWorkshopProductIdentity } from '../steamServices/ASFWorkshopProductIdentity';
 import { SteamArkLog } from '../steamServices/SteamArkLogger';
+import { SteamArkContentLocale } from '../steamServices/SteamArkRegionPolicy';
 import { steamArkCoreLogger } from '../steamServices/SteamArkCoreLogger';
 import { HarmonySteamCmClientFactory } from './HarmonySteamCmClientFactory';
 import { HarmonySteamCmMultiDecompressor } from './HarmonySteamCmRuntime';
@@ -60,32 +65,41 @@ const STEAM_ID64_BASE: string = '76561197960265728';
 const GET_FRIEND_LIST_URL: string = 'https://api.steampowered.com/ISteamUserOAuth/GetFriendList/v0001/';
 const GET_PLAYER_SUMMARIES_URL: string = 'https://api.steampowered.com/ISteamUserOAuth/GetUserSummaries/v0001/';
 const STEAM_EMOTICON_CDN_URL: string = 'https://community.akamai.steamstatic.com/economy/emoticon/';
+const STEAM_AVATAR_CDN_URL: string = 'https://community.cloudflare.steamstatic.com/steamcommunity/public/images/avatars/';
+const PERSONA_REQUEST_BATCH_SIZE: number = 500;
 
 export class HarmonySteamSocialRuntime implements ISteamArkSocialRuntime {
   readonly accountId: string;
   private readonly profile: SteamAccountProfile;
   private readonly credentials: SteamCredentialSet;
   private readonly proxy: NGFProxyConfiguration;
+  private readonly cmLanguage: string;
   private readonly cmClient: SteamCmClient;
   private readonly listeners: Array<SteamArkSocialEventListener> = [];
   private readonly cmEventListener: (event: SteamCmEvent) => void;
   private readonly unifiedListener: (message: SteamCmUnifiedMessage) => void;
+  /** Real-time presence cache merged from Web API sync and CM persona pushes. */
+  private readonly friendProfiles: Map<string, SteamArkFriendProfile> = new Map<string, SteamArkFriendProfile>();
+  private readonly friendNicknames: Map<string, string> = new Map<string, string>();
+  private friendIds: Array<string> = [];
   private connected: boolean = false;
   private connectTask: Promise<void> | null = null;
   private disposed: boolean = false;
 
-  constructor(profile: SteamAccountProfile, credentials: SteamCredentialSet, proxyPassword: string) {
+  constructor(profile: SteamAccountProfile, credentials: SteamCredentialSet, proxyPassword: string,
+    locale: SteamArkContentLocale | null = null) {
     this.accountId = profile.accountId;
     this.profile = profile;
     this.credentials = credentials;
     this.proxy = HarmonySteamSocialRuntime.toProxy(profile, proxyPassword);
+    this.cmLanguage = locale !== null ? locale.steamLanguage : 'schinese';
     const options: SteamCmClientOptions = new SteamCmClientOptions(
       SteamCmEndpoint.DEFAULT_SERVER,
       profile.steamId64,
       ASFWorkshopProductIdentity.DEVICE_FRIENDLY_NAME + ' Social',
       65581,
       1771,
-      'schinese',
+      this.cmLanguage,
       0,
       30,
       2,
@@ -187,6 +201,7 @@ export class HarmonySteamSocialRuntime implements ISteamArkSocialRuntime {
         }
         this.appendProfiles(summariesResponse.body, friendSince, result);
       }
+      this.mergeFriendsIntoCache(result);
       result.sort((left: SteamArkFriendProfile, right: SteamArkFriendProfile): number => {
         if (left.personaState !== right.personaState) return right.personaState - left.personaState;
         return left.displayName.localeCompare(right.displayName);
@@ -358,7 +373,7 @@ export class HarmonySteamSocialRuntime implements ISteamArkSocialRuntime {
     await this.connect();
     await this.cmClient.call('FriendMessages.ReportMessage#1',
       SteamFriendMessagesCodec.encodeReportMessage(fromSteamId64, toSteamId64, timestamp,
-        ordinal, reason, reportText, 'schinese'));
+        ordinal, reason, reportText, this.cmLanguage));
   }
 
   async dismissSessionNotice(friendSteamId64: string, noticeType: number): Promise<void> {
@@ -397,6 +412,174 @@ export class HarmonySteamSocialRuntime implements ISteamArkSocialRuntime {
     if (event.type === SteamCmEventType.ERROR || event.type === SteamCmEventType.EXPIRED) {
       this.emit(new SteamArkSocialEvent(SteamArkSocialEventType.ERROR, this.accountId, '', null, event.message));
     }
+    if (event.type === SteamCmEventType.FRIENDS_LIST && event.friendsList !== null) {
+      this.handleFriendsList(event.friendsList.friends, event.friendsList.incremental);
+    } else if (event.type === SteamCmEventType.PERSONA_STATE && event.personaStates !== null) {
+      this.handlePersonaStates(event.personaStates.friends);
+    } else if (event.type === SteamCmEventType.PLAYER_NICKNAMES && event.playerNicknames !== null) {
+      this.handlePlayerNicknames(event.playerNicknames.nicknames);
+    }
+  }
+
+  /** Stores the CM friends list and asks Steam to push persona state for friends. */
+  private handleFriendsList(entries: Array<SteamFriendListEntry>, incremental: boolean): void {
+    const friendIds: Array<string> = [];
+    for (let index: number = 0; index < entries.length; index++) {
+      const entry: SteamFriendListEntry = entries[index];
+      if (entry.steamId64.length <= 0 || entry.steamId64 === '0') {
+        continue;
+      }
+      friendIds.push(entry.steamId64);
+    }
+    if (!incremental || this.friendIds.length <= 0) {
+      this.friendIds = friendIds.slice();
+    } else {
+      const merged: Array<string> = this.friendIds.slice();
+      const known: Map<string, boolean> = new Map<string, boolean>();
+      for (let index = 0; index < merged.length; index++) {
+        known.set(merged[index], true);
+      }
+      for (let index = 0; index < friendIds.length; index++) {
+        if (!known.has(friendIds[index])) {
+          merged.push(friendIds[index]);
+        }
+      }
+      this.friendIds = merged;
+    }
+    SteamArkLog.debug(TAG, 'CM friends list stored; account=' + SteamArkLog.accountId(this.accountId) +
+      ', friends=' + this.friendIds.length.toString() + ', incremental=' + String(incremental));
+    if (this.friendIds.length > 0) {
+      this.requestPersonaDataForFriends().catch((error: Error): void => {
+        SteamArkLog.warn(TAG, 'CM persona data request failed; account=' +
+          SteamArkLog.accountId(this.accountId) + ', errorType=' + SteamArkLog.errorKind(error));
+      });
+    }
+  }
+
+  private async requestPersonaDataForFriends(): Promise<void> {
+    for (let offset: number = 0; offset < this.friendIds.length; offset += PERSONA_REQUEST_BATCH_SIZE) {
+      const chunk: Array<string> = this.friendIds.slice(
+        offset, Math.min(offset + PERSONA_REQUEST_BATCH_SIZE, this.friendIds.length));
+      const sent: boolean = await this.cmClient.requestFriendsPersonaData(
+        chunk, SteamClientPersonaStateRequestFlags.DEFAULT);
+      if (!sent) {
+        return;
+      }
+    }
+  }
+
+  /** Merges persona pushes into the profile cache and emits one presence event. */
+  private handlePersonaStates(entries: Array<SteamPersonaStateEntry>): void {
+    const changed: Array<SteamArkFriendProfile> = [];
+    for (let index: number = 0; index < entries.length; index++) {
+      const entry: SteamPersonaStateEntry = entries[index];
+      if (!this.isKnownFriend(entry.steamId64)) {
+        continue;
+      }
+      const existing: SteamArkFriendProfile | undefined = this.friendProfiles.get(entry.steamId64);
+      const nickname: string = this.friendNicknames.get(entry.steamId64) ?? '';
+      const displayName: string = nickname.length > 0
+        ? nickname
+        : (entry.playerName.length > 0
+          ? entry.playerName
+          : (existing !== undefined ? existing.displayName : ''));
+      const avatarUrl: string = existing !== undefined && existing.avatarUrl.length > 0
+        ? existing.avatarUrl
+        : this.buildAvatarUrl(entry.avatarHashHex);
+      const profileUrl: string = existing !== undefined && existing.profileUrl.length > 0
+        ? existing.profileUrl
+        : 'https://steamcommunity.com/profiles/' + entry.steamId64 + '/';
+      const updated: SteamArkFriendProfile = new SteamArkFriendProfile(
+        entry.steamId64,
+        HarmonySteamSocialRuntime.steamId64ToAccountId(entry.steamId64),
+        displayName,
+        avatarUrl,
+        profileUrl,
+        entry.personaState,
+        entry.gameName,
+        entry.gameAppId,
+        entry.lastLogoffEpochSeconds,
+        existing !== undefined ? existing.friendSinceEpochSeconds : 0
+      );
+      if (existing !== undefined &&
+        existing.personaState === updated.personaState &&
+        existing.gameAppId === updated.gameAppId &&
+        existing.displayName === updated.displayName &&
+        existing.gameName === updated.gameName) {
+        continue;
+      }
+      this.friendProfiles.set(entry.steamId64, updated);
+      changed.push(updated);
+    }
+    if (changed.length <= 0) {
+      return;
+    }
+    SteamArkLog.debug(TAG, 'CM persona state applied; account=' + SteamArkLog.accountId(this.accountId) +
+      ', changed=' + changed.length.toString());
+    this.emit(new SteamArkSocialEvent(
+      SteamArkSocialEventType.FRIEND_PRESENCE_CHANGED, this.accountId, '', null, '', 0, 0, 0, '', '',
+      false, 0, 0, changed));
+  }
+
+  private handlePlayerNicknames(nicknames: Array<SteamPlayerNicknameEntry>): void {
+    for (let index: number = 0; index < nicknames.length; index++) {
+      const entry: SteamPlayerNicknameEntry = nicknames[index];
+      if (entry.steamId64.length <= 0 || entry.steamId64 === '0') {
+        continue;
+      }
+      this.friendNicknames.set(entry.steamId64, entry.nickname);
+    }
+  }
+
+  private mergeFriendsIntoCache(friends: Array<SteamArkFriendProfile>): void {
+    for (let index: number = 0; index < friends.length; index++) {
+      const friend: SteamArkFriendProfile = friends[index];
+      if (friend.steamId64.length <= 0 || friend.steamId64 === '0') {
+        continue;
+      }
+      const nickname: string = this.friendNicknames.get(friend.steamId64) ?? '';
+      const cached: SteamArkFriendProfile | undefined = this.friendProfiles.get(friend.steamId64);
+      if (nickname.length > 0 && nickname !== friend.displayName) {
+        this.friendProfiles.set(friend.steamId64, new SteamArkFriendProfile(
+          friend.steamId64, friend.accountId32, nickname, friend.avatarUrl, friend.profileUrl,
+          friend.personaState, friend.gameName, friend.gameAppId, friend.lastLogoffEpochSeconds,
+          friend.friendSinceEpochSeconds));
+        continue;
+      }
+      if (cached === undefined || cached.displayName.length <= 0) {
+        this.friendProfiles.set(friend.steamId64, friend);
+      }
+    }
+    const knownIds: Map<string, boolean> = new Map<string, boolean>();
+    for (let index: number = 0; index < friends.length; index++) {
+      knownIds.set(friends[index].steamId64, true);
+    }
+    const dropped: Array<string> = [];
+    this.friendProfiles.forEach((_value: SteamArkFriendProfile, steamId64: string): void => {
+      if (!knownIds.has(steamId64)) {
+        dropped.push(steamId64);
+      }
+    });
+    for (let index: number = 0; index < dropped.length; index++) {
+      this.friendProfiles.delete(dropped[index]);
+    }
+    if (this.friendIds.length <= 0) {
+      this.friendIds = friends.map((friend: SteamArkFriendProfile): string => friend.steamId64);
+    }
+  }
+
+  private isKnownFriend(steamId64: string): boolean {
+    if (this.friendIds.indexOf(steamId64) >= 0) {
+      return true;
+    }
+    return this.friendProfiles.has(steamId64);
+  }
+
+  private buildAvatarUrl(avatarHashHex: string): string {
+    if (avatarHashHex.length !== 40) {
+      return '';
+    }
+    return STEAM_AVATAR_CDN_URL + avatarHashHex.substring(0, 2) + '/' + avatarHashHex + '_medium.jpg';
   }
 
   private handleUnifiedMessage(message: SteamCmUnifiedMessage): void {
@@ -601,7 +784,7 @@ export class HarmonySteamSocialRuntime implements ISteamArkSocialRuntime {
 
 export class HarmonySteamSocialRuntimeFactory implements ISteamArkSocialRuntimeFactory {
   create(profile: SteamAccountProfile, credentials: SteamCredentialSet,
-    proxyPassword: string): ISteamArkSocialRuntime {
-    return new HarmonySteamSocialRuntime(profile, credentials, proxyPassword);
+    proxyPassword: string, locale: SteamArkContentLocale | null = null): ISteamArkSocialRuntime {
+    return new HarmonySteamSocialRuntime(profile, credentials, proxyPassword, locale);
   }
 }

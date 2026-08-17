@@ -33,6 +33,7 @@ export enum SteamArkSyncStage {
   IDLE = 'idle',
   PROFILE = 'profile',
   INVENTORY = 'inventory',
+  LIBRARY = 'library',
   FARMING = 'farming',
   SOCIAL = 'social',
   MESSAGES = 'messages',
@@ -76,19 +77,22 @@ export class SteamArkCacheFreshnessSnapshot {
   readonly farmingUpdatedAtEpochSeconds: number;
   readonly socialUpdatedAtEpochSeconds: number;
   readonly messagesUpdatedAtEpochSeconds: number;
+  readonly libraryUpdatedAtEpochSeconds: number;
 
   constructor(
     profileUpdatedAtEpochSeconds: number = 0,
     inventoryUpdatedAtEpochSeconds: number = 0,
     farmingUpdatedAtEpochSeconds: number = 0,
     socialUpdatedAtEpochSeconds: number = 0,
-    messagesUpdatedAtEpochSeconds: number = 0
+    messagesUpdatedAtEpochSeconds: number = 0,
+    libraryUpdatedAtEpochSeconds: number = 0
   ) {
     this.profileUpdatedAtEpochSeconds = profileUpdatedAtEpochSeconds;
     this.inventoryUpdatedAtEpochSeconds = inventoryUpdatedAtEpochSeconds;
     this.farmingUpdatedAtEpochSeconds = farmingUpdatedAtEpochSeconds;
     this.socialUpdatedAtEpochSeconds = socialUpdatedAtEpochSeconds;
     this.messagesUpdatedAtEpochSeconds = messagesUpdatedAtEpochSeconds;
+    this.libraryUpdatedAtEpochSeconds = libraryUpdatedAtEpochSeconds;
   }
 }
 

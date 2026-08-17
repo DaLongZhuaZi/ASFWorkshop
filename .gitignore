@@ -4,6 +4,10 @@
 **/node_modules/
 **/oh_modules/
 
+# External reference sources (not built, not tracked)
+/reference/
+/SteamKit/
+
 # HarmonyOS / DevEco generated files
 /local.properties
 **/build/
@@ -70,6 +74,8 @@ desktop.ini
 
 # Agent local state
 /.antigravitycli/
+/.codegenie/
+/.zcode/
 /.claude/
 /.atomcode/
 /.workbuddy/
@@ -109,3 +115,6 @@ desktop.ini
 *.key
 *.keystore
 *.jks
+
+# local source backups (never commit)
+backup/

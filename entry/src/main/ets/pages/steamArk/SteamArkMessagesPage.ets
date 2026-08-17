@@ -4,10 +4,12 @@ import {
   NGFControlStyleTokens,
   NGFHdsTitleBarOptionsFactory,
   NGFMaterialSurfaceTokens,
+  ngfRelativeTimeFormatterFacade,
   ngfVisualEffectsFacade
 } from 'ngf_framework';
 import { SteamCredentialSet, SteamSessionState } from 'steam_core';
 import {
+  SteamArkContentLocale,
   SteamArkLog,
   SteamArkMessageCacheReadResult,
   SteamArkMessageCacheStore,
@@ -69,6 +71,7 @@ export struct SteamArkMessagesPage {
   @State private statusMessage: ResourceStr = $r('app.string.steam_messages_status_idle');
   @StorageProp('ngf_is_dark_mode') private isDarkMode: boolean = false;
   @StorageProp('steam_ark_profile_background_url') private profileBackgroundUrl: string = '';
+  @StorageProp('steam_ark_profile_background_enabled') private backgroundEnabled: boolean = true;
   @StorageProp('ngf_visual_effects_should_use_system_material_surface') private useSysMat: boolean = true;
   private readonly scroller: Scroller = steamArkTabScrollers.messages;
   private isPageActive: boolean = false;
@@ -149,7 +152,7 @@ export struct SteamArkMessagesPage {
         true,
         false
       ))
-      .backgroundImage(this.profileBackgroundUrl)
+      .backgroundImage(this.backgroundEnabled ? this.profileBackgroundUrl : '')
       .backgroundImageSize(ImageSize.Cover)
       .ignoreLayoutSafeArea([LayoutSafeAreaType.SYSTEM], [LayoutSafeAreaEdge.TOP, LayoutSafeAreaEdge.BOTTOM])
       .bindToScrollable([this.scroller])
@@ -187,7 +190,9 @@ export struct SteamArkMessagesPage {
           left: 16,
           right: 16,
           top: this.embedded ? this.contentTopInsetVp : this.topInsetVp,
-          bottom: this.embedded ? 84 : 92
+          bottom: this.embedded
+            ? 84 + SteamArkExperiencePolicy.FRIENDS_BAR_RESERVE
+            : 92
         })
       }
       .width('100%')
@@ -195,6 +200,11 @@ export struct SteamArkMessagesPage {
       .scrollBar(BarState.Off)
       .edgeEffect(EdgeEffect.Spring)
       .backgroundColor($r('app.color.background_transparent'))
+      .onDidScroll((_xOffset: number, yOffset: number): void => {
+        if (this.embedded) {
+          steamArkTabScrollers.notifyScrollDelta(yOffset);
+        }
+      })
     }
     .width('100%')
     .height('100%')
@@ -431,19 +441,121 @@ export struct SteamArkMessagesPage {
 
   @Builder
   private buildMessageCard(item: SteamArkMessageItem): void {
+    if (item.imageUrl.length > 0) {
+      this.buildImageMessageCard(item);
+    } else {
+      this.buildTextMessageCard(item);
+    }
+  }
+
+  @Builder
+  private buildImageMessageCard(item: SteamArkMessageItem): void {
+    Column({ space: 10 }) {
+      Image(item.imageUrl)
+        .width('100%')
+        .height(150)
+        .borderRadius(10)
+        .objectFit(ImageFit.Cover)
+        .backgroundColor(Color.Transparent)
+        .onClick((): void => {
+          void this.openMessage(item);
+        })
+      Column({ space: 6 }) {
+        Row({ space: 8 }) {
+          Text(this.categoryLabel(item.category))
+            .fontSize(10)
+            .fontColor(this.categoryColor(item.category))
+          if (item.unread) {
+            Circle({ width: 6, height: 6 })
+              .fill(SteamArkTheme.accent(this.isDarkMode))
+          }
+          Blank()
+          if (this.messageTimeText(item).length > 0) {
+            Text(this.messageTimeText(item))
+              .fontSize(10)
+              .fontColor(SteamArkTheme.textMuted(this.isDarkMode))
+          }
+        }
+        .width('100%')
+        Text(item.title)
+          .width('100%')
+          .fontSize(15)
+          .fontWeight(item.unread ? FontWeight.Bold : FontWeight.Medium)
+          .fontColor(SteamArkTheme.textPrimary(this.isDarkMode))
+          .lineHeight(20)
+          .maxLines(2)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+        Text(item.body)
+          .width('100%')
+          .fontSize(12)
+          .lineHeight(17)
+          .fontColor(SteamArkTheme.textSecondary(this.isDarkMode))
+          .maxLines(3)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+        Row({ space: 6 }) {
+          Text(item.source)
+            .fontSize(10)
+            .fontColor(SteamArkTheme.textMuted(this.isDarkMode))
+          Blank()
+          SymbolGlyph($r('sys.symbol.chevron_right'))
+            .fontSize(15)
+            .fontColor([SteamArkTheme.textMuted(this.isDarkMode)])
+        }
+        .width('100%')
+      }
+      .width('100%')
+      .alignItems(HorizontalAlign.Start)
+      if (item.remoteId.length > 0 || item.tradeOfferId.length > 0) {
+        Row({ space: 8 }) {
+          if (item.remoteId.length > 0) {
+            Button($r('app.string.steam_messages_hide'))
+              .layoutWeight(1)
+              .height(34)
+              .buttonStyle(ButtonStyleMode.TEXTUAL)
+              .enabled(this.actionItemId.length <= 0)
+              .onClick((): void => {
+                void this.hideMessage(item);
+              })
+          }
+          if (item.tradeOfferId.length > 0) {
+            Button($r('app.string.steam_trade_open_in_browser'))
+              .layoutWeight(1)
+              .height(34)
+              .enabled(this.actionItemId.length <= 0)
+              .backgroundColor(SteamArkTheme.accent(this.isDarkMode))
+              .fontColor(SteamArkTheme.onAccent(this.isDarkMode))
+              .onClick((): void => {
+                this.confirmTradeAction(item);
+              })
+          }
+        }
+        .width('100%')
+      }
+    }
+    .width('100%')
+    .padding(14)
+    .backgroundColor(NGFMaterialSurfaceTokens.buildMaterialAwareSurfaceBackground(
+      SteamArkTheme.surface(this.isDarkMode), this.useSysMat
+    ))
+    .backgroundEffect(NGFMaterialSurfaceTokens.buildMaterialAwareControlBackgroundEffect(this.useSysMat))
+    .borderRadius(NGFMaterialSurfaceTokens.CONTROL_RADIUS)
+    .border({
+      width: this.isFocusedMessage(item) ? 2 : 0,
+      color: this.isFocusedMessage(item)
+        ? SteamArkTheme.accent(this.isDarkMode)
+        : $r('app.color.background_transparent')
+    })
+    .animation({ duration: SteamArkExperiencePolicy.CONTENT_ENTER_DURATION, curve: Curve.EaseOut })
+    .systemMaterial(ngfVisualEffectsFacade.buildSystemMaterialForLightEffectControl())
+  }
+
+  @Builder
+  private buildTextMessageCard(item: SteamArkMessageItem): void {
     Column({ space: 10 }) {
       Row({ space: 12 }) {
-        if (item.imageUrl.length > 0) {
-          Image(item.imageUrl)
-            .width(72)
-            .height(48)
-            .borderRadius(4)
-            .objectFit(ImageFit.Cover)
-        } else {
-          SymbolGlyph(this.categoryIcon(item.category))
-            .fontSize(21)
-            .fontColor([this.categoryColor(item.category)])
-        }
+        SymbolGlyph(this.categoryIcon(item.category))
+          .fontSize(21)
+          .fontColor([this.categoryColor(item.category)])
         Column({ space: 4 }) {
           Row({ space: 6 }) {
             Text(item.title)
@@ -452,9 +564,10 @@ export struct SteamArkMessagesPage {
               .fontWeight(item.unread ? FontWeight.Bold : FontWeight.Medium)
               .fontColor(SteamArkTheme.textPrimary(this.isDarkMode))
               .maxLines(2)
-            Text(this.categoryLabel(item.category))
-              .fontSize(10)
-              .fontColor(this.categoryColor(item.category))
+            if (item.unread) {
+              Circle({ width: 6, height: 6 })
+                .fill(SteamArkTheme.accent(this.isDarkMode))
+            }
           }
           .width('100%')
           Text(item.body)
@@ -464,9 +577,21 @@ export struct SteamArkMessagesPage {
             .fontColor(SteamArkTheme.textSecondary(this.isDarkMode))
             .maxLines(3)
             .textOverflow({ overflow: TextOverflow.Ellipsis })
-          Text(item.source)
-            .fontSize(10)
-            .fontColor(SteamArkTheme.textMuted(this.isDarkMode))
+          Row({ space: 8 }) {
+            Text(this.categoryLabel(item.category))
+              .fontSize(10)
+              .fontColor(this.categoryColor(item.category))
+            if (this.messageTimeText(item).length > 0) {
+              Text(this.messageTimeText(item))
+                .fontSize(10)
+                .fontColor(SteamArkTheme.textMuted(this.isDarkMode))
+            }
+            Blank()
+            Text(item.source)
+              .fontSize(10)
+              .fontColor(SteamArkTheme.textMuted(this.isDarkMode))
+          }
+          .width('100%')
         }
         .layoutWeight(1)
         .alignItems(HorizontalAlign.Start)
@@ -520,6 +645,38 @@ export struct SteamArkMessagesPage {
     })
     .animation({ duration: SteamArkExperiencePolicy.CONTENT_ENTER_DURATION, curve: Curve.EaseOut })
     .systemMaterial(ngfVisualEffectsFacade.buildSystemMaterialForLightEffectControl())
+  }
+
+  private messageTimeText(item: SteamArkMessageItem): string {
+    if (item.createdAtEpochSeconds <= 0) {
+      return '';
+    }
+    const result = ngfRelativeTimeFormatterFacade.format(item.createdAtEpochSeconds * 1000, this.timeLocale());
+    return result.text;
+  }
+
+  private timeLocale(): string {
+    const selected = steamArkStateService.getSelectedAccount();
+    const accountId: string = selected === null ? '' : selected.profile.accountId;
+    const locale: SteamArkContentLocale | null = steamArkStateService.resolveAccountLocale(accountId);
+    if (locale !== null) {
+      if (locale.steamLanguage === 'schinese' || locale.steamLanguage === 'tchinese') {
+        return 'zh-CN';
+      }
+      if (locale.steamLanguage === 'japanese') {
+        return 'ja-JP';
+      }
+      if (locale.steamLanguage === 'koreana') {
+        return 'ko-KR';
+      }
+      if (locale.steamLanguage === 'russian') {
+        return 'ru-RU';
+      }
+      if (locale.steamLanguage === 'brazilian') {
+        return 'pt-BR';
+      }
+    }
+    return 'en-US';
   }
 
   @Builder

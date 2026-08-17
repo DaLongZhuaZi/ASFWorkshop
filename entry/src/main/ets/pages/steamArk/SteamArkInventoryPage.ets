@@ -1,5 +1,4 @@
 import { HdsNavDestination } from '@kit.UIDesignKit';
-import { webview } from '@kit.ArkWeb';
 import {
   NGFControlStyleTokens,
   NGFHdsTitleBarOptionsFactory,
@@ -16,22 +15,27 @@ import {
 } from 'steam_core';
 import {
   SteamArkAccountSyncSnapshot,
+  SteamArkContentLocale,
   SteamArkLog,
+  SteamArkRegionPolicy,
   SteamArkStateListener,
   SteamArkStateSnapshot,
   SteamArkSyncSnapshot,
   SteamArkSyncSnapshotListener,
   SteamArkSyncStage,
+  steamArkFarmingService,
   steamArkSyncCoordinator,
   steamArkStateService
 } from '../../steamServices';
 import { SteamArkTheme } from './SteamArkTheme';
 import { steamArkTabScrollers } from './SteamArkTabScrollers';
 import { SteamArkNavigationBridge } from './SteamArkNavigationBridge';
-import { SteamArkBrowserRequest, SteamArkRouteName } from './SteamArkRoutes';
+import { SteamArkBrowserRequest, SteamArkInventoryDetailRequest, SteamArkRouteName } from './SteamArkRoutes';
 import { SteamArkPageWindowName, SteamArkPageWindowSupport } from './SteamArkPageWindowSupport';
 import { SteamArkProfileBackground } from './SteamArkProfileBackground';
 import { SteamArkStateUnavailableCard } from './SteamArkStateUnavailableCard';
+import { SteamArkInventoryDetailPage } from './SteamArkInventoryDetailPage';
+import { SteamArkPanelBackBridge } from './SteamArkPanelBackBridge';
 import { SteamArkMarketPrice, SteamArkMarketPriceService } from '../../steamServices/SteamArkMarketPriceService';
 import { SteamArkExperiencePolicy } from './SteamArkExperiencePolicy';
 
@@ -45,6 +49,10 @@ class SteamInventoryAppTab {
   }
 }
 
+const INVENTORY_APP_CACHE_TTL_MS: number = 5 * 60 * 1000;
+const INVENTORY_PANEL_TOP_BAR_HEIGHT: number = 44;
+const INVENTORY_PANEL_TOP_BAR_TOP: number = SteamArkTheme.CONTENT_TOP_INSET - INVENTORY_PANEL_TOP_BAR_HEIGHT;
+
 @Component
 export struct SteamArkInventoryPage {
   @Prop embedded: boolean = false;
@@ -55,11 +63,6 @@ export struct SteamArkInventoryPage {
   @State private onlyTradeable: boolean = false;
   @State private onlyMarketable: boolean = false;
   @State private selectedOwnerAppId: string = '';
-  @State private detailSheetVisible: boolean = false;
-  @State private detailSheetUrl: string = '';
-  @State private detailSheetItemName: string = '';
-  @State private detailSheetLoading: boolean = false;
-  @State private detailSheetFailed: boolean = false;
   @State private isSyncing: boolean = false;
   @State private coordinatorSyncRunning: boolean = false;
   @State private hasAccount: boolean = false;
@@ -75,23 +78,24 @@ export struct SteamArkInventoryPage {
   @State private inventoryPage: number = 0;
   @State private hasInventorySynced: boolean = false;
   @State private inventorySyncFailed: boolean = false;
-  @State private inventoryWaterFlowViewportHeight: number = 420;
+  @State private inventoryDetailVisible: boolean = false;
   @State private statusMessage: ResourceStr = $r('app.string.steam_inventory_status_idle');
   @State private marketPrices: Array<SteamArkMarketPrice> = [];
   @State private marketPriceSyncing: boolean = false;
   @StorageProp('ngf_is_dark_mode') private isDarkMode: boolean = false;
   @StorageProp('steam_ark_profile_background_url') private profileBackgroundUrl: string = '';
+  @StorageProp('steam_ark_profile_background_enabled') private backgroundEnabled: boolean = true;
   @StorageProp('ngf_visual_effects_should_use_system_material_surface') private useSysMat: boolean = true;
   private readonly scroller: Scroller = steamArkTabScrollers.inventory;
-  private readonly detailController: webview.WebviewController = new webview.WebviewController();
   private inventoryRequestVersion: number = 0;
   private marketPriceRequestVersion: number = 0;
   private activeInventoryRequestCount: number = 0;
+  private autoInventorySyncRequested: boolean = false;
   private isPageActive: boolean = false;
   private lifecycleGeneration: number = 0;
   private accountScopeGeneration: number = 0;
-  private inventoryPageBodyHeight: number = 0;
   private coordinatorInventoryUpdatedAtEpochSeconds: number = 0;
+  private inventoryDetailRequest: SteamArkInventoryDetailRequest = new SteamArkInventoryDetailRequest();
   private readonly stateListener: SteamArkStateListener = (snapshot: SteamArkStateSnapshot): void => {
     if (!this.isPageActive) {
       return;
@@ -115,6 +119,12 @@ export struct SteamArkInventoryPage {
     this.coordinatorSyncRunning = false;
     if (this.embedded) {
       this.topInsetVp = this.contentTopInsetVp;
+      SteamArkPanelBackBridge.registerCloseHandler(
+        SteamArkPanelBackBridge.INVENTORY_DETAIL_PANEL,
+        SteamArkPanelBackBridge.TAB_INVENTORY,
+        (): void => {
+          this.closeInventoryDetail();
+        });
     } else {
       const lifecycleGeneration: number = this.lifecycleGeneration;
       SteamArkPageWindowSupport.loadDynamicTopInset(
@@ -124,7 +134,6 @@ export struct SteamArkInventoryPage {
         (inset: number): void => {
           if (this.isCurrentLifecycle(lifecycleGeneration)) {
             this.topInsetVp = inset;
-            this.updateInventoryWaterFlowViewport(this.inventoryPageBodyHeight);
           }
         }
       );
@@ -146,6 +155,9 @@ export struct SteamArkInventoryPage {
     this.activeInventoryRequestCount = 0;
     this.isSyncing = false;
     this.coordinatorSyncRunning = false;
+    if (this.embedded) {
+      SteamArkPanelBackBridge.unregisterCloseHandler(SteamArkPanelBackBridge.INVENTORY_DETAIL_PANEL);
+    }
     steamArkStateService.unsubscribe('SteamArkInventoryPage');
     steamArkSyncCoordinator.unsubscribe('SteamArkInventoryPage');
     if (!this.embedded) {
@@ -169,15 +181,20 @@ export struct SteamArkInventoryPage {
         true,
         false
       ))
-      .backgroundImage(this.profileBackgroundUrl)
+      .backgroundImage(this.backgroundEnabled ? this.profileBackgroundUrl : '')
       .backgroundImageSize(ImageSize.Cover)
       .ignoreLayoutSafeArea([LayoutSafeAreaType.SYSTEM], [LayoutSafeAreaEdge.TOP, LayoutSafeAreaEdge.BOTTOM])
+      .hideTitleBar(this.inventoryDetailVisible)
       .bindToScrollable([this.scroller])
       .onReady((context: NavDestinationContext): void => {
         this.pathStack = context.pathStack;
       })
       .onBackPressed((): boolean => {
         SteamArkPageWindowSupport.restoreHome();
+        if (this.inventoryDetailVisible) {
+          this.closeInventoryDetail();
+          return true;
+        }
         this.pathStack.pop();
         return true;
       });
@@ -191,6 +208,11 @@ export struct SteamArkInventoryPage {
         SteamArkProfileBackground()
       }
 
+      // The page-level Scroll owns all scrolling: the item grid is
+      // content-sized, so tiles flow with the page instead of scrolling inside
+      // a fixed-height box. The list stays mounted while the item detail covers
+      // it, so tile geometry never resets and the close-direction
+      // geometryTransition always flies back to the real tile position.
       Scroll(this.scroller) {
         Column({ space: 12 }) {
           if (!this.stateReady) {
@@ -201,7 +223,7 @@ export struct SteamArkInventoryPage {
           } else {
             this.buildToolbarCard();
             if (this.inventoryItems.length > 0) {
-              this.buildItemsCard();
+              this.buildItemsSection();
             } else {
               this.buildEmptyStateCard();
             }
@@ -217,7 +239,9 @@ export struct SteamArkInventoryPage {
           left: 16,
           right: 16,
           top: this.embedded ? this.contentTopInsetVp : this.topInsetVp,
-          bottom: this.embedded ? 84 : 92
+          bottom: this.embedded
+            ? 84 + SteamArkExperiencePolicy.FRIENDS_BAR_RESERVE
+            : 92
         })
       }
       .width('100%')
@@ -227,97 +251,61 @@ export struct SteamArkInventoryPage {
       .nestedScroll({ scrollForward: NestedScrollMode.PARENT_FIRST, scrollBackward: NestedScrollMode.SELF_FIRST })
       .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
       .backgroundColor($r('app.color.background_transparent'))
+      .onDidScroll((_xOffset: number, yOffset: number): void => {
+        if (this.embedded) {
+          steamArkTabScrollers.notifyScrollDelta(yOffset);
+        }
+      })
+
+      if (this.inventoryDetailVisible) {
+        Stack({ alignContent: Alignment.TopStart }) {
+          SteamArkInventoryDetailPage({ request: this.inventoryDetailRequest })
+          this.buildInventoryPanelTopBar()
+        }
+        .width('100%')
+        .height('100%')
+        .transition(SteamArkExperiencePolicy.seamlessBranchTransition())
+      }
     }
     .width('100%')
     .height('100%')
-    .onAreaChange((_oldValue: Area, newValue: Area): void => {
-      this.updateInventoryWaterFlowViewport(newValue.height);
-    })
     .backgroundColor(this.embedded
       ? $r('app.color.background_transparent') : SteamArkTheme.background(this.isDarkMode))
     .opacity(this.stateReady && !this.isInventoryRefreshVisible() && !this.marketPriceSyncing ? 1 : 0.9)
     .animation({ duration: SteamArkExperiencePolicy.CONTENT_REFRESH_DURATION, curve: Curve.EaseOut })
-    .bindSheet($$this.detailSheetVisible, this.buildInventoryDetailSheet(), {
-      height: SheetSize.LARGE,
-      showClose: true,
-      preferType: SheetType.BOTTOM
-    })
   }
 
   @Builder
-  private buildInventoryDetailSheet(): void {
-    Column({ space: 10 }) {
-      Text(this.detailSheetItemName.length > 0
-        ? this.detailSheetItemName : $r('app.string.steam_inventory_detail_sheet_title'))
-        .width('100%')
-        .fontSize(20)
-        .fontWeight(FontWeight.Bold)
-        .fontColor(SteamArkTheme.textPrimary(this.isDarkMode))
-        .textAlign(TextAlign.Center)
+  private buildInventoryPanelTopBar(): void {
+    Row({ space: 10 }) {
       Stack({ alignContent: Alignment.Center }) {
-        if (this.detailSheetUrl.length > 0) {
-          Web({ src: this.detailSheetUrl, controller: this.detailController })
-            .width('100%')
-            .height('100%')
-            .backgroundColor(SteamArkTheme.background(this.isDarkMode))
-            .javaScriptAccess(true)
-            .domStorageAccess(true)
-            .onPageBegin((): void => {
-              this.detailSheetLoading = true;
-              this.detailSheetFailed = false;
-            })
-            .onPageEnd((): void => {
-              this.detailSheetLoading = false;
-              this.detailSheetFailed = false;
-            })
-            .onErrorReceive((event: OnErrorReceiveEvent): void => {
-              if (!event.request.isMainFrame) {
-                return;
-              }
-              this.detailSheetLoading = false;
-              this.detailSheetFailed = true;
-            })
-        }
-        if (this.detailSheetLoading) {
-          Column({ space: 10 }) {
-            LoadingProgress()
-              .width(34)
-              .height(34)
-              .color(SteamArkTheme.accent(this.isDarkMode))
-            Text($r('app.string.steam_inventory_detail_sheet_loading'))
-              .fontSize(14)
-              .fontColor(SteamArkTheme.textPrimary(this.isDarkMode))
-              .textAlign(TextAlign.Center)
-          }
-          .padding(18)
-          .backgroundColor(NGFMaterialSurfaceTokens.buildMaterialAwareSurfaceBackground(
-            SteamArkTheme.surfaceElevated(this.isDarkMode), this.useSysMat))
-          .backgroundEffect(NGFMaterialSurfaceTokens.buildMaterialAwarePanelBackgroundEffect(this.useSysMat))
-          .borderRadius(NGFMaterialSurfaceTokens.CONTROL_RADIUS)
-          .systemMaterial(ngfVisualEffectsFacade.buildSystemMaterialForPanel())
-        }
-        if (this.detailSheetFailed) {
-          Text($r('app.string.steam_inventory_detail_sheet_failed'))
-            .fontSize(14)
-            .lineHeight(20)
-            .fontColor(SteamArkTheme.error(this.isDarkMode))
-            .textAlign(TextAlign.Center)
-            .padding(18)
-            .backgroundColor(NGFMaterialSurfaceTokens.buildMaterialAwareSurfaceBackground(
-              SteamArkTheme.surfaceElevated(this.isDarkMode), this.useSysMat))
-            .borderRadius(NGFMaterialSurfaceTokens.CONTROL_RADIUS)
-            .systemMaterial(ngfVisualEffectsFacade.buildSystemMaterialForPanel())
-        }
+        SymbolGlyph($r('sys.symbol.chevron_left'))
+          .fontSize(20)
+          .fontColor([SteamArkTheme.textPrimary(this.isDarkMode)])
       }
-      .layoutWeight(1)
-      .width('100%')
-      .borderRadius(NGFMaterialSurfaceTokens.CONTROL_RADIUS)
-      .clip(true)
+      .width(40)
+      .height(40)
+      .borderRadius(20)
+      .backgroundColor(NGFMaterialSurfaceTokens.buildMaterialAwareSurfaceBackground(
+        SteamArkTheme.surfaceControl(this.isDarkMode), this.useSysMat))
+      .backgroundEffect(NGFMaterialSurfaceTokens.buildMaterialAwareControlBackgroundEffect(this.useSysMat))
+      .id('steam-ark-inventory-panel-back')
+      .onClick((): void => {
+        this.closeInventoryDetail();
+      })
+
+      Text(this.inventoryDetailRequest.name.length > 0
+        ? this.inventoryDetailRequest.name
+        : $r('app.string.steam_inventory_title'))
+        .fontSize(17)
+        .fontWeight(FontWeight.Medium)
+        .fontColor(SteamArkTheme.textPrimary(this.isDarkMode))
+        .maxLines(1)
+        .textOverflow({ overflow: TextOverflow.Ellipsis })
+        .layoutWeight(1)
     }
     .width('100%')
-    .height('100%')
-    .padding({ left: 16, right: 16, top: 12, bottom: 16 })
-    .backgroundColor(SteamArkTheme.background(this.isDarkMode))
+    .padding({ left: 12, right: 16, top: INVENTORY_PANEL_TOP_BAR_TOP, bottom: 6 })
   }
 
   @Builder
@@ -436,6 +424,31 @@ export struct SteamArkInventoryPage {
       .onClick((): void => {
         void this.handleSync();
       })
+
+      Button() {
+        Row({ space: 6 }) {
+          SymbolGlyph($r('sys.symbol.list_bullet'))
+            .fontSize(16)
+            .fontColor([SteamArkTheme.onAccent(this.isDarkMode)])
+          Text($r('app.string.steam_market_browse_entry'))
+            .fontSize(NGFControlStyleTokens.FORM_CONTROL_FONT_SIZE)
+            .fontWeight(FontWeight.Medium)
+            .fontColor(SteamArkTheme.onAccent(this.isDarkMode))
+        }
+        .justifyContent(FlexAlign.Center)
+      }
+      .width('100%')
+      .height(NGFControlStyleTokens.NORMAL_BUTTON_HEIGHT)
+      .id('steam-ark-inventory-open-market-browse')
+      .borderRadius(NGFControlStyleTokens.FORM_CONTROL_RADIUS)
+      .backgroundColor(SteamArkTheme.accent(this.isDarkMode))
+      .enabled(this.hasAccount)
+      .onClick((): void => {
+        SteamArkNavigationBridge.pushHomeRoute(SteamArkRouteName.BROWSER,
+          new SteamArkBrowserRequest('https://steamcommunity.com/market/',
+            ngfI18nManagerFacade.resolveString($r('app.string.steam_market_browse_title')),
+            'steamcommunity.com'));
+      })
     }
     .width('100%')
     .padding(16)
@@ -462,16 +475,30 @@ export struct SteamArkInventoryPage {
         .id(this.filterToggleId(filterKey))
         .enabled(!this.isInventoryRefreshVisible())
         .onChange((value: boolean): void => {
-          if (filterKey === 1) {
-            this.onlyTradeable = value;
-          } else {
-            this.onlyMarketable = value;
-          }
-          this.statusMessage = $r('app.string.steam_inventory_status_filters');
+          // Filter switches fly with the exact same transition as game
+          // switches, so both selections share one animation entry point.
+          this.animateInventorySelection((): void => {
+            if (filterKey === 1) {
+              this.onlyTradeable = value;
+            } else {
+              this.onlyMarketable = value;
+            }
+            this.statusMessage = $r('app.string.steam_inventory_status_filters');
+          });
         })
     }
     .layoutWeight(1)
     .height(NGFControlStyleTokens.FORM_CONTROL_MIN_HEIGHT)
+  }
+
+  /**
+   * Shared selection animation for the inventory grid: switching games (the
+   * category tabs) and switching filters (tradable / marketable toggles) must
+   * fly with the exact same transition, so every grid-driving selection
+   * mutates its state through this single entry point.
+   */
+  private animateInventorySelection(mutate: () => void): void {
+    this.getUIContext().animateTo({ duration: 220, curve: Curve.EaseOut }, mutate);
   }
 
   @Builder
@@ -514,7 +541,7 @@ export struct SteamArkInventoryPage {
     .padding({ left: 12, right: 12, top: 7, bottom: 3 })
     .justifyContent(FlexAlign.Center)
     .onClick((): void => {
-      this.getUIContext().animateTo({ duration: 220, curve: Curve.EaseOut }, (): void => {
+      this.animateInventorySelection((): void => {
         this.selectedOwnerAppId = tab.appId;
       });
     })
@@ -589,8 +616,14 @@ export struct SteamArkInventoryPage {
     })
   }
 
+  /**
+   * Inventory tiles flow inside the page-level Scroll: the waterfall is
+   * content-sized (no fixed-height box, no inner scrolling), exactly like the
+   * library page's per-section waterfalls, so one gesture scrolls the whole
+   * page and the load-more and readonly cards follow the last row naturally.
+   */
   @Builder
-  private buildItemsCard(): void {
+  private buildItemsSection(): void {
     Column({ space: 10 }) {
       Row({ space: 8 }) {
         SymbolGlyph($r('sys.symbol.archivebox'))
@@ -606,52 +639,64 @@ export struct SteamArkInventoryPage {
       }
       .width('100%')
 
-      WaterFlow({ layoutMode: WaterFlowLayoutMode.SLIDING_WINDOW }) {
-        ForEach(
-          this.visibleInventoryItems(),
-          (item: SteamInventoryItem): void => {
-            FlowItem() {
-              this.buildInventoryItemRow(item);
-            }
-            .width('100%')
-          },
-          (item: SteamInventoryItem): string => item.assetId + '|' + item.classId + '|' + item.instanceId
-        )
+      if (this.visibleInventoryItems().length > 0) {
+        WaterFlow({ layoutMode: WaterFlowLayoutMode.SLIDING_WINDOW }) {
+          ForEach(
+            this.visibleInventoryItems(),
+            (item: SteamInventoryItem): void => {
+              FlowItem() {
+                this.buildInventoryItemRow(item);
+              }
+              .width('100%')
+            },
+            (item: SteamInventoryItem): string => item.assetId + '|' + item.classId + '|' + item.instanceId
+          )
         }
         .width('100%')
-        .layoutWeight(1)
-        .columnsTemplate('repeat(auto-fill, 156vp)')
+        // API 26 fills each responsive breakpoint column, so the final column
+        // never leaves the fixed-width gap created by auto-fill tracks.
+        .columnsTemplate({ fillType: PresetFillType.BREAKPOINT_SM2MD3LG5 })
         .columnsGap(10)
         .rowsGap(10)
-        .nestedScroll({ scrollForward: NestedScrollMode.SELF_FIRST, scrollBackward: NestedScrollMode.SELF_FIRST })
-        .edgeEffect(EdgeEffect.Spring)
+        .edgeEffect(EdgeEffect.None)
         .scrollBar(BarState.Off)
         .cachedCount(12)
+        .clip(true)
+      } else {
+        // Filters can exclude every synced item; keep that state visible
+        // instead of rendering a bare count header above nothing.
+        Text($r('app.string.steam_inventory_empty_result_desc'))
+          .width('100%')
+          .fontSize(12)
+          .lineHeight(18)
+          .textAlign(TextAlign.Center)
+          .fontColor(SteamArkTheme.textSecondary(this.isDarkMode))
+          .padding({ top: 12, bottom: 12 })
+      }
     }
     .width('100%')
-    .height(this.inventoryWaterFlowViewportHeight)
-    .padding(16)
-    .backgroundColor(NGFMaterialSurfaceTokens.buildMaterialAwareSurfaceBackground(SteamArkTheme.surfaceElevated(this.isDarkMode), this.useSysMat))
-    .backgroundEffect(NGFMaterialSurfaceTokens.buildMaterialAwarePanelBackgroundEffect(this.useSysMat))
-    .borderRadius(NGFMaterialSurfaceTokens.PANEL_RADIUS)
-    .border({
-      width: NGFMaterialSurfaceTokens.buildMaterialAwareBorderWidth(1, this.useSysMat),
-      color: NGFMaterialSurfaceTokens.buildMaterialAwareBorderColor(SteamArkTheme.divider(this.isDarkMode), this.useSysMat)
-    })
-    .shadow(NGFMaterialSurfaceTokens.buildMaterialAwarePanelShadow(this.useSysMat))
-    .systemMaterial(ngfVisualEffectsFacade.buildSystemMaterialForPanel())
   }
 
   @Builder
   private buildInventoryItemRow(item: SteamInventoryItem): void {
     Column({ space: 8 }) {
       Stack({ alignContent: Alignment.Center }) {
-        if (item.iconUrlLarge.length > 0 || item.iconUrl.length > 0) {
+        if (this.inventoryDetailVisible && this.inventoryDetailRequest.assetId === item.assetId) {
+          // The opened tile icon unmounts (real disappear) so the detail icon
+          // can pair with it in both flight directions; the equal-size
+          // placeholder keeps the persistent list layout stable.
+          Column()
+            .width('100%')
+            .height(108)
+        } else if (item.iconUrlLarge.length > 0 || item.iconUrl.length > 0) {
           Image(item.iconUrlLarge.length > 0 ? item.iconUrlLarge : item.iconUrl)
             .width('100%')
             .height(108)
             .objectFit(ImageFit.Contain)
             .backgroundColor(Color.Transparent)
+            .clip(true)
+            .geometryTransition(SteamArkInventoryDetailRequest.iconGeometryId(item.assetId))
+            .transition(TransitionEffect.OPACITY)
         } else {
           SymbolGlyph($r('sys.symbol.archivebox'))
             .fontSize(34)
@@ -726,37 +771,38 @@ export struct SteamArkInventoryPage {
         .width('100%')
         .justifyContent(FlexAlign.Center)
 
-        if (this.canOpenCommunityDetail(item)) {
-          Button() {
-            Row({ space: 6 }) {
-            Text($r('app.string.steam_inventory_open_community_detail'))
-                .layoutWeight(1)
-                .fontSize(11)
-                .fontWeight(FontWeight.Medium)
-                .lineHeight(15)
-                .fontColor(SteamArkTheme.accent(this.isDarkMode))
-                .maxLines(2)
-                .textAlign(TextAlign.Center)
-              SymbolGlyph($r('sys.symbol.chevron_right'))
-                .fontSize(13)
-                .fontColor([SteamArkTheme.accent(this.isDarkMode)])
-            }
-            .width('100%')
-            .justifyContent(FlexAlign.Center)
+        Button() {
+          Row({ space: 6 }) {
+            Text($r('app.string.steam_inventory_view_detail'))
+              .layoutWeight(1)
+              .fontSize(11)
+              .fontWeight(FontWeight.Medium)
+              .lineHeight(15)
+              .fontColor(SteamArkTheme.accent(this.isDarkMode))
+              .maxLines(2)
+              .textAlign(TextAlign.Center)
+            SymbolGlyph($r('sys.symbol.chevron_right'))
+              .fontSize(13)
+              .fontColor([SteamArkTheme.accent(this.isDarkMode)])
           }
           .width('100%')
-          .height(48)
-          .buttonStyle(ButtonStyleMode.TEXTUAL)
-          .accessibilityText($r('app.string.steam_inventory_open_community_detail'))
-          .onClick((): void => {
-            this.openInventoryDetailSheet(item);
-          })
+          .justifyContent(FlexAlign.Center)
         }
+        .width('100%')
+        .height(48)
+        .buttonStyle(ButtonStyleMode.TEXTUAL)
+        .accessibilityText($r('app.string.steam_inventory_view_detail'))
+        .onClick((): void => {
+          this.openInventoryDetailPage(item);
+        })
       }
       .width('100%')
       .alignItems(HorizontalAlign.Center)
     }
     .width('100%')
+    .onClick((): void => {
+      this.openInventoryDetailPage(item);
+    })
     .padding({ left: 10, right: 10, top: 10, bottom: 10 })
     .backgroundColor(NGFMaterialSurfaceTokens.buildMaterialAwareSurfaceBackground(
       SteamArkTheme.surfaceControl(this.isDarkMode), this.useSysMat))
@@ -769,6 +815,41 @@ export struct SteamArkInventoryPage {
     })
     .shadow(NGFMaterialSurfaceTokens.buildMaterialAwareControlShadow(this.useSysMat))
     .systemMaterial(ngfVisualEffectsFacade.buildSystemMaterialForLightEffectControl())
+  }
+
+  private inventoryAppList(accountId: string): Array<string> {
+    const apps: Array<string> = ['753', '730', '570', '440'];
+    const report = steamArkFarmingService.getBadgeSyncReport(accountId);
+    if (report !== null) {
+      for (let index = 0; index < report.games.length && apps.length < 12; index++) {
+        const appId: string = report.games[index].appId;
+        if (appId !== '753' && !apps.includes(appId)) {
+          apps.push(appId);
+        }
+      }
+    }
+    return apps;
+  }
+
+  private inventoryContextId(appId: string): string {
+    return appId === '753' ? '6' : '2';
+  }
+
+  private mergeInventoryItems(target: Array<SteamInventoryItem>, items: Array<SteamInventoryItem>): void {
+    for (let index = 0; index < items.length; index++) {
+      const item: SteamInventoryItem = items[index];
+      const identity: string = item.appId + '|' + item.assetId;
+      let duplicate: boolean = false;
+      for (let existingIndex = 0; existingIndex < target.length; existingIndex++) {
+        if (target[existingIndex].appId + '|' + target[existingIndex].assetId === identity) {
+          duplicate = true;
+          break;
+        }
+      }
+      if (!duplicate) {
+        target.push(item);
+      }
+    }
   }
 
   private visibleInventoryItems(): Array<SteamInventoryItem> {
@@ -869,25 +950,42 @@ export struct SteamArkInventoryPage {
     return tabs;
   }
 
-  private marketUrl(item: SteamInventoryItem): string {
-    const marketName: string = item.marketHashName.length > 0 ? item.marketHashName : item.name;
-    return 'https://steamcommunity.com/market/listings/' + item.appId + '/' + encodeURIComponent(marketName);
-  }
-
-  private canOpenCommunityDetail(item: SteamInventoryItem): boolean {
-    return item.marketable && item.appId.trim().length > 0 &&
-      (item.marketHashName.trim().length > 0 || item.name.trim().length > 0);
-  }
-
-  private openInventoryDetailSheet(item: SteamInventoryItem): void {
-    if (!this.canOpenCommunityDetail(item)) {
+  private openInventoryDetailPage(item: SteamInventoryItem): void {
+    if (!this.isPageActive) {
       return;
     }
-    this.detailSheetItemName = item.name.length > 0 ? item.name : item.marketName;
-    this.detailSheetUrl = this.marketUrl(item);
-    this.detailSheetLoading = true;
-    this.detailSheetFailed = false;
-    this.detailSheetVisible = true;
+    SteamArkLog.info('InventoryPage', 'inventory item opened; assetId=' + item.assetId +
+      ', appId=' + item.appId);
+    this.inventoryDetailRequest = SteamArkInventoryDetailRequest.fromItem(item);
+    if (this.embedded) {
+      SteamArkPanelBackBridge.setVisible(SteamArkPanelBackBridge.INVENTORY_DETAIL_PANEL, true);
+    }
+    // Official 一镜到底 (persistent-source variant): the list stays mounted;
+    // the opened tile icon unmounts while the detail is open so the pair has
+    // a genuine appear/disappear in both flight directions, and the flight
+    // always ends at the tile's real, never-reset position.
+    this.getUIContext().animateTo({
+      duration: SteamArkExperiencePolicy.EXPAND_TRANSITION_DURATION,
+      curve: Curve.FastOutSlowIn
+    }, (): void => {
+      this.inventoryDetailVisible = true;
+    });
+  }
+
+  private closeInventoryDetail(): void {
+    if (!this.inventoryDetailVisible) {
+      return;
+    }
+    SteamArkLog.info('InventoryPage', 'inventory detail closed');
+    if (this.embedded) {
+      SteamArkPanelBackBridge.setVisible(SteamArkPanelBackBridge.INVENTORY_DETAIL_PANEL, false);
+    }
+    this.getUIContext().animateTo({
+      duration: SteamArkExperiencePolicy.EXPAND_TRANSITION_DURATION,
+      curve: Curve.FastOutSlowIn
+    }, (): void => {
+      this.inventoryDetailVisible = false;
+    });
   }
 
   private openExternalUrl(url: string): void {
@@ -998,7 +1096,8 @@ export struct SteamArkInventoryPage {
     await this.syncInventoryPage(true);
   }
 
-  private async syncInventoryPage(append: boolean, silent: boolean = false): Promise<void> {
+  private async syncInventoryPage(append: boolean, silent: boolean = false,
+    fromAuto: boolean = false): Promise<void> {
     if (!this.isPageActive || this.selectedAccountId.length <= 0 || this.activeInventoryRequestCount > 0) {
       return;
     }
@@ -1018,57 +1117,78 @@ export struct SteamArkInventoryPage {
       this.statusMessage = $r('app.string.steam_inventory_status_loading');
     }
     try {
-      const query = new SteamInventoryQuery(
-        '753',
-        '6',
-        requestedPage,
-        100,
-        '',
-        false,
-        false,
-        requestedStartAssetId,
-        'english'
-      );
-      const page = await steamArkStateService.syncInventory(accountId, query);
-      if (!this.isCurrentInventoryRequest(lifecycleGeneration, requestVersion, accountId,
-        accountScopeGeneration)) {
-        SteamArkLog.debug('InventoryPage', 'stale inventory page ignored; page=' + requestedPage.toString());
-        return;
-      }
+      const locale: SteamArkContentLocale | null = steamArkStateService.resolveAccountLocale(accountId);
+      const language: string = locale !== null ? locale.steamLanguage : 'english';
+      let totalCount: number = 0;
       if (append) {
-        this.appendInventoryItems(page.items);
-      } else {
-        const cachedPages: Array<SteamInventoryPage> = steamArkStateService.getCachedDefaultInventoryPages(accountId);
-        if (cachedPages.length > 0) {
-          const lastCachedPage: SteamInventoryPage = cachedPages[cachedPages.length - 1];
-          this.inventoryItems = this.mergeCachedInventoryPages(cachedPages);
-          this.inventoryPage = lastCachedPage.query.page;
-          this.nextStartAssetId = lastCachedPage.nextStartAssetId;
-          this.hasMoreInventory = lastCachedPage.hasMore && lastCachedPage.nextStartAssetId.length > 0;
-        } else {
-          this.inventoryItems = page.items.slice();
-          this.inventoryPage = requestedPage;
-          this.nextStartAssetId = page.nextStartAssetId;
-          this.hasMoreInventory = page.hasMore && page.nextStartAssetId.length > 0;
+        const query = new SteamInventoryQuery(
+          '753', '6', requestedPage, 100, '', false, false, requestedStartAssetId, language
+        );
+        const page = await steamArkStateService.syncInventory(accountId, query);
+        if (!this.isCurrentInventoryRequest(lifecycleGeneration, requestVersion, accountId,
+          accountScopeGeneration)) {
+          SteamArkLog.debug('InventoryPage', 'stale inventory page ignored; page=' + requestedPage.toString());
+          return;
         }
-      }
-      this.inventoryTotalCount = page.totalCount;
-      this.hasInventorySynced = true;
-      this.inventorySyncFailed = false;
-      if (append) {
+        this.appendInventoryItems(page.items);
         this.inventoryPage = requestedPage;
         this.nextStartAssetId = page.nextStartAssetId;
         this.hasMoreInventory = page.hasMore && page.nextStartAssetId.length > 0;
+        totalCount = page.totalCount;
+      } else {
+        // Steam serves inventory per app; fetch the common game apps plus the
+        // account's badged games and merge them into one list.
+        const appIds: Array<string> = this.inventoryAppList(accountId);
+        const merged: Array<SteamInventoryItem> = [];
+        let syncedAppCount: number = 0;
+        for (let index = 0; index < appIds.length; index++) {
+          const appId: string = appIds[index];
+          const query = new SteamInventoryQuery(
+            appId, this.inventoryContextId(appId), 1, 100, '', false, false, '', language
+          );
+          let page: SteamInventoryPage | null = null;
+          try {
+            const cached: SteamInventoryPage | null = await steamArkStateService.getCachedInventory(accountId, query);
+            if (cached !== null && Date.now() - cached.syncedAtEpochSeconds * 1000 < INVENTORY_APP_CACHE_TTL_MS) {
+              page = cached;
+            } else {
+              page = await steamArkStateService.syncInventory(accountId, query);
+              syncedAppCount++;
+            }
+          } catch (error) {
+            SteamArkLog.warn('InventoryPage', 'inventory app sync failed; account=' +
+              SteamArkLog.accountId(accountId) + ', appId=' + appId +
+              ', errorType=' + SteamArkLog.errorKind(error));
+            page = await steamArkStateService.getCachedInventory(accountId, query);
+          }
+          if (!this.isCurrentInventoryRequest(lifecycleGeneration, requestVersion, accountId,
+            accountScopeGeneration)) {
+            SteamArkLog.debug('InventoryPage', 'stale inventory app ignored; appId=' + appId);
+            return;
+          }
+          if (page === null) {
+            continue;
+          }
+          if (appId === '753') {
+            this.inventoryPage = page.query.page;
+            this.nextStartAssetId = page.nextStartAssetId;
+            this.hasMoreInventory = page.hasMore && page.nextStartAssetId.length > 0;
+          }
+          this.mergeInventoryItems(merged, page.items);
+          this.inventoryItems = merged.slice();
+        }
+        totalCount = merged.length;
+        SteamArkLog.info('InventoryPage', 'multi-app inventory sync completed; account=' +
+          SteamArkLog.accountId(accountId) + ', apps=' + appIds.length.toString() +
+          ', synced=' + syncedAppCount.toString() + ', items=' + merged.length.toString());
       }
+      this.inventoryTotalCount = totalCount;
+      this.hasInventorySynced = true;
+      this.inventorySyncFailed = false;
       void this.refreshMarketPrices(accountId, lifecycleGeneration, accountScopeGeneration);
       if (!silent) {
-        this.statusMessage = page.hasMore && page.nextStartAssetId.length <= 0
-          ? $r('app.string.steam_inventory_status_more_unavailable')
-          : $r('app.string.steam_inventory_status_sync_success');
+        this.statusMessage = $r('app.string.steam_inventory_status_sync_success');
       }
-      SteamArkLog.info('InventoryPage', 'read-only inventory sync completed; items=' +
-        page.items.length.toString() + ', total=' + page.totalCount.toString() +
-        ', hasMore=' + String(this.hasMoreInventory));
       SteamArkLog.performance('InventoryPage', 'inventory sync', startedAt);
     } catch (_error) {
       if (this.isCurrentInventoryRequest(lifecycleGeneration, requestVersion, accountId,
@@ -1080,6 +1200,10 @@ export struct SteamArkInventoryPage {
           : $r('app.string.steam_inventory_status_sync_failed');
         SteamArkLog.error('InventoryPage', 'read-only inventory sync failed; account=' +
           SteamArkLog.accountId(accountId) + ', detailLength=' + detail.length.toString());
+        if (fromAuto) {
+          // Allow a later coordinator completion to retry the automatic sync.
+          this.autoInventorySyncRequested = false;
+        }
       }
     } finally {
       if (this.isCurrentInventoryRequest(lifecycleGeneration, requestVersion, accountId,
@@ -1090,11 +1214,11 @@ export struct SteamArkInventoryPage {
     }
   }
 
-  private restoreInventoryCache(
+  private async restoreInventoryCache(
     accountId: string,
     lifecycleGeneration: number,
     accountScopeGeneration: number
-  ): void {
+  ): Promise<void> {
     const normalizedId: string = accountId.trim();
     if (normalizedId.length <= 0 || !this.isCurrentInventoryScope(lifecycleGeneration,
       normalizedId, accountScopeGeneration)) {
@@ -1114,6 +1238,28 @@ export struct SteamArkInventoryPage {
       this.inventorySyncFailed = false;
       this.statusMessage = $r('app.string.steam_inventory_status_cached');
       void this.refreshMarketPrices(normalizedId, lifecycleGeneration, accountScopeGeneration);
+    }
+    // Merge any freshly synced non-Steam apps (in-memory cache) so CS2, DOTA2
+    // and other game inventories are visible even before the next full sync.
+    const accountLocale: SteamArkContentLocale | null = steamArkStateService.resolveAccountLocale(normalizedId);
+    const language: string = accountLocale !== null ? accountLocale.steamLanguage : 'english';
+    const appIds: Array<string> = this.inventoryAppList(normalizedId);
+    for (let index = 0; index < appIds.length; index++) {
+      const appId: string = appIds[index];
+      if (appId === '753') {
+        continue;
+      }
+      if (!this.isCurrentInventoryScope(lifecycleGeneration, normalizedId, accountScopeGeneration)) {
+        return;
+      }
+      const query = new SteamInventoryQuery(
+        appId, this.inventoryContextId(appId), 1, 100, '', false, false, '', language
+      );
+      const cached = await steamArkStateService.getCachedInventory(normalizedId, query);
+      if (cached !== null) {
+        this.mergeInventoryItems(this.inventoryItems, cached.items);
+        this.inventoryTotalCount = this.inventoryItems.length;
+      }
     }
   }
 
@@ -1159,7 +1305,7 @@ export struct SteamArkInventoryPage {
       const lifecycleGeneration: number = this.lifecycleGeneration;
       const accountScopeGeneration: number = this.accountScopeGeneration;
       const accountId: string = this.selectedAccountId;
-      this.restoreInventoryCache(accountId, lifecycleGeneration, accountScopeGeneration);
+      void this.restoreInventoryCache(accountId, lifecycleGeneration, accountScopeGeneration);
       void steamArkSyncCoordinator.requestAccountSync(accountId, 'inventory_page_restore')
         .catch((error: Error): void => {
           if (this.isCurrentInventoryScope(lifecycleGeneration, accountId, accountScopeGeneration)) {
@@ -1169,6 +1315,7 @@ export struct SteamArkInventoryPage {
           SteamArkLog.warn('InventoryPage', 'background inventory sync dispatch failed; errorType=' +
             SteamArkLog.errorKind(error));
         });
+      this.maybeAutoSyncInventory();
     }
     SteamArkLog.debug('InventoryPage', 'state applied; selectedAccount=' +
       SteamArkLog.accountId(this.selectedAccountId) + ', session=' + String(this.sessionState) +
@@ -1186,7 +1333,11 @@ export struct SteamArkInventoryPage {
       this.coordinatorSyncRunning = false;
       return;
     }
+    const wasCoordinatorSyncRunning: boolean = this.coordinatorSyncRunning;
     this.coordinatorSyncRunning = accountSnapshot.running;
+    if (wasCoordinatorSyncRunning && !accountSnapshot.running) {
+      this.maybeAutoSyncInventory();
+    }
     const inventoryFailed: boolean = this.hasInventorySyncFailure(accountSnapshot);
     if (accountSnapshot.running && !inventoryFailed) {
       this.inventorySyncFailed = false;
@@ -1194,7 +1345,7 @@ export struct SteamArkInventoryPage {
     const inventoryUpdatedAtEpochSeconds: number = accountSnapshot.freshness.inventoryUpdatedAtEpochSeconds;
     if (inventoryUpdatedAtEpochSeconds > this.coordinatorInventoryUpdatedAtEpochSeconds) {
       this.coordinatorInventoryUpdatedAtEpochSeconds = inventoryUpdatedAtEpochSeconds;
-      this.restoreInventoryCache(
+      void this.restoreInventoryCache(
         this.selectedAccountId,
         this.lifecycleGeneration,
         this.accountScopeGeneration
@@ -1262,10 +1413,34 @@ export struct SteamArkInventoryPage {
     return this.isSyncing || this.coordinatorSyncRunning;
   }
 
+  /**
+   * Steam serves inventory per app (753 = Steam items, game apps use their own
+   * context), so the first time the page becomes usable it runs one combined
+   * multi-app sync. Without this, opening the page only shows the restored
+   * Steam-community inventory and game items such as CS2 skins or DOTA 2
+   * cosmetics stay invisible until the user taps the refresh button.
+   */
+  private maybeAutoSyncInventory(): void {
+    if (this.autoInventorySyncRequested) {
+      return;
+    }
+    if (!this.isPageActive || !this.isInventorySyncAllowed()) {
+      return;
+    }
+    if (this.isSyncing) {
+      return;
+    }
+    this.autoInventorySyncRequested = true;
+    SteamArkLog.info('InventoryPage', 'multi-app inventory auto sync requested; account=' +
+      SteamArkLog.accountId(this.selectedAccountId));
+    void this.syncInventoryPage(false, false, true);
+  }
+
   private resetInventoryResults(): void {
     this.inventoryRequestVersion += 1;
     this.marketPriceRequestVersion += 1;
     this.activeInventoryRequestCount = 0;
+    this.autoInventorySyncRequested = false;
     this.isSyncing = false;
     this.coordinatorSyncRunning = false;
     this.coordinatorInventoryUpdatedAtEpochSeconds = 0;
@@ -1377,7 +1552,8 @@ export struct SteamArkInventoryPage {
     this.marketPriceSyncing = true;
     try {
       const service = new SteamArkMarketPriceService();
-      const batch = await service.loadBatch(account.profile, items);
+      const batch = await service.loadBatch(account.profile, items,
+        SteamArkRegionPolicy.resolve(account.region, account.profile.countryCode, account.profile.walletCurrency));
       if (this.isCurrentMarketPriceRequest(lifecycleGeneration, accountId, accountScopeGeneration,
         priceRequestVersion)) {
         this.marketPrices = batch.prices;
@@ -1555,18 +1731,6 @@ export struct SteamArkInventoryPage {
       return message.substring(0, 512);
     }
     return message;
-  }
-
-  private updateInventoryWaterFlowViewport(height: Length): void {
-    if (typeof height !== 'number') {
-      return;
-    }
-    this.inventoryPageBodyHeight = height;
-    const availableHeight: number = Math.floor(height - this.topInsetVp - 320);
-    const nextHeight: number = Math.max(320, Math.min(720, availableHeight));
-    if (Math.abs(nextHeight - this.inventoryWaterFlowViewportHeight) >= 1) {
-      this.inventoryWaterFlowViewportHeight = nextHeight;
-    }
   }
 
 }

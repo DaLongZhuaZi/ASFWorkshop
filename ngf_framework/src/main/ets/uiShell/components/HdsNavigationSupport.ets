@@ -189,10 +189,10 @@ export class NGFHdsTitleBarOptionsFactory {
 
   static buildOverContentWithTitleColors(
     mainTitle: ResourceStr,
-    subTitle: ResourceStr,
-    scrollBackgroundColor: ResourceColor,
-    mainTitleColor: ResourceColor,
-    subTitleColor: ResourceColor,
+    subTitle?: ResourceStr,
+    scrollBackgroundColor: ResourceColor = $r('app.color.ngf_background_transparent'),
+    mainTitleColor: ResourceColor = $r('app.color.text_white'),
+    subTitleColor: ResourceColor = $r('app.color.text_white_medium'),
     avoidLayoutSafeArea: boolean = false,
     enableComponentSafeArea: boolean = false
   ): HdsNavigationTitleBarOptions {

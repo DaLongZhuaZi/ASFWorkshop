@@ -5597,6 +5597,10 @@
       "value": "SOCKS5"
     },
     {
+      "name": "steam_network_socks5_warning",
+      "value": "SOCKS5 proxies cannot currently reach Steam CM (WebSocket) connections: sign-in, farming, and other CM-dependent features will be unavailable. Web and store features keep working."
+    },
+    {
       "name": "steam_network_host_placeholder",
       "value": "Proxy host"
     },
@@ -5705,6 +5709,10 @@
       "value": "Parsing or secure storage failed; the import was not completed."
     },
     {
+      "name": "steam_accounts_import_read_failed",
+      "value": "Could not read the selected file. Make sure it is not damaged or in use, then try again."
+    },
+    {
       "name": "steam_inventory_selected_account",
       "value": "Current account"
     },
@@ -5802,7 +5810,7 @@
     },
     {
       "name": "steam_accounts_auth_busy",
-      "value": "Authentication in progress..."
+      "value": "Processing authentication request. Please wait 30-90 seconds."
     },
     {
       "name": "steam_accounts_auth_success",
@@ -6037,10 +6045,6 @@
       "value": "ASF Workshop"
     },
     {
-      "name": "steam_home_subtitle",
-      "value": "Native Steam workspace"
-    },
-    {
       "name": "steam_home_tab_overview",
       "value": "Overview"
     },
@@ -6063,6 +6067,10 @@
     {
       "name": "steam_home_tab_settings",
       "value": "Settings"
+    },
+    {
+      "name": "steam_home_tab_library",
+      "value": "Library"
     },
     {
       "name": "steam_home_overview_title",
@@ -7103,6 +7111,22 @@
     {
       "name": "steam_workspace_badges_empty",
       "value": "No game badges were found for this account"
+    },
+    {
+      "name": "steam_workspace_badges_uncrafted_title",
+      "value": "Uncrafted badges"
+    },
+    {
+      "name": "steam_workspace_badges_uncrafted_ready",
+      "value": "Cards collected, ready to craft"
+    },
+    {
+      "name": "steam_workspace_badges_uncrafted_remaining",
+      "value": "%1$d card drops remaining"
+    },
+    {
+      "name": "steam_workspace_badges_uncrafted_empty",
+      "value": "No craftable badges found"
     },
     {
       "name": "steam_workspace_card_amount_prefix",
@@ -8271,6 +8295,1266 @@
     {
       "name": "steam_float_chat_browser_open_failed",
       "value": "Unable to open Steam Chat in the app. Close the floating window and try again."
+    },
+    {
+      "name": "steam_settings_legal_title",
+      "value": "About & Legal"
+    },
+    {
+      "name": "steam_settings_open_about",
+      "value": "About ASF Workshop"
+    },
+    {
+      "name": "steam_settings_open_user_agreement",
+      "value": "User Agreement"
+    },
+    {
+      "name": "steam_settings_open_privacy",
+      "value": "Privacy"
+    },
+    {
+      "name": "steam_settings_open_open_source",
+      "value": "Open-source Notices"
+    },
+    {
+      "name": "steam_legal_link_failed",
+      "value": "Unable to open the external page. Check that a browser or AppGallery is available."
+    },
+    {
+      "name": "steam_legal_link_unavailable",
+      "value": "This page cannot access the system link service. Please try again later."
+    },
+    {
+      "name": "steam_legal_about_title",
+      "value": "About ASF Workshop"
+    },
+    {
+      "name": "steam_legal_about_subtitle",
+      "value": "Steam account, asset, farming, and social companion"
+    },
+    {
+      "name": "steam_legal_about_overview_title",
+      "value": "Product"
+    },
+    {
+      "name": "steam_legal_about_overview_desc",
+      "value": "ASF Workshop provides Steam account, token, inventory, card, badge, farming, message, friend, and network tools for HarmonyOS NEXT. Some features depend on Steam services, network conditions, and account permissions; pages retain cache and show their actual sync state."
+    },
+    {
+      "name": "steam_legal_about_independence_title",
+      "value": "Independent Product"
+    },
+    {
+      "name": "steam_legal_about_independence_desc",
+      "value": "ASF Workshop is not an official product of, and is not endorsed by, Valve, Steam, SteamKit2, or ArchiSteamFarm. Steam and related names, trademarks, and content belong to their respective owners."
+    },
+    {
+      "name": "steam_legal_about_support_title",
+      "value": "Support Development"
+    },
+    {
+      "name": "steam_legal_about_support_desc",
+      "value": "Support is voluntary and helps fund maintenance, compatibility review, and experience improvements. It does not purchase Steam services, account permissions, or platform commitments."
+    },
+    {
+      "name": "steam_legal_about_support_action",
+      "value": "Open Afdian"
+    },
+    {
+      "name": "steam_legal_about_developer_apps_title",
+      "value": "More From This Developer"
+    },
+    {
+      "name": "steam_legal_about_developer_apps_desc",
+      "value": "These links open AppGallery through the system and never pass Steam sessions or account data to those pages."
+    },
+    {
+      "name": "steam_legal_about_gallery_action",
+      "value": "View in AppGallery"
+    },
+    {
+      "name": "steam_legal_developer_manxia_name",
+      "value": "ManXia"
+    },
+    {
+      "name": "steam_legal_developer_manxia_desc",
+      "value": "A HarmonyOS NEXT comic reader"
+    },
+    {
+      "name": "steam_legal_developer_lumabloom_name",
+      "value": "LumaBloom"
+    },
+    {
+      "name": "steam_legal_developer_lumabloom_desc",
+      "value": "Another HarmonyOS app from this developer"
+    },
+    {
+      "name": "steam_legal_developer_book_name",
+      "value": "Book Vein"
+    },
+    {
+      "name": "steam_legal_developer_book_desc",
+      "value": "Another HarmonyOS app from this developer"
+    },
+    {
+      "name": "steam_legal_user_title",
+      "value": "User Agreement"
+    },
+    {
+      "name": "steam_legal_user_subtitle",
+      "value": "Read before using account and network features"
+    },
+    {
+      "name": "steam_legal_user_scope_title",
+      "value": "Scope"
+    },
+    {
+      "name": "steam_legal_user_scope_desc",
+      "value": "Only add, import, or manage Steam accounts and authentication material that you own and are authorized to use. Follow the rules of Steam, AppGallery, and applicable local laws."
+    },
+    {
+      "name": "steam_legal_user_service_title",
+      "value": "Service Dependencies"
+    },
+    {
+      "name": "steam_legal_user_service_desc",
+      "value": "Sign-in, profile, inventory, farming, chat, and notifications can be affected by Steam services, networks, system background limits, or account permissions. ASF Workshop shows cache, loading, and structured failures, but cannot guarantee third-party availability."
+    },
+    {
+      "name": "steam_legal_user_safe_use_title",
+      "value": "Safe Use"
+    },
+    {
+      "name": "steam_legal_user_safe_use_desc",
+      "value": "Protect passwords, cookies, verification codes, QR codes, and maFiles. Do not import authentication files from unknown sources or share shared_secret, identity_secret, access tokens, or refresh tokens."
+    },
+    {
+      "name": "steam_legal_user_high_risk_title",
+      "value": "High-risk Actions"
+    },
+    {
+      "name": "steam_legal_user_high_risk_desc",
+      "value": "Trades, market purchases and sales, redemption, asset transfers, and mobile confirmations are handled by signed-in Steam pages. Review counterparties, prices, and confirmations there; ASF Workshop does not execute them in native pages."
+    },
+    {
+      "name": "steam_legal_user_update_title",
+      "value": "Updates and Changes"
+    },
+    {
+      "name": "steam_legal_user_update_desc",
+      "value": "Features, compatibility scope, and notices may change with updates. Continuing to use an updated version means accepting the notices and security boundaries that apply to it."
+    },
+    {
+      "name": "steam_legal_user_disclaimer_title",
+      "value": "Disclaimer"
+    },
+    {
+      "name": "steam_legal_user_disclaimer_desc",
+      "value": "1. The App is provided \"as is\" without any express or implied warranty; farming, inventory valuations, and sync results are not promises of profit.\n\n2. Account risks from using the App (including but not limited to Steam account restrictions or bans) are borne by you. We are not liable for losses caused by Steam service changes, network outages, system background limits, third-party service failures, or force majeure.\n\n3. You must comply with Steam's terms of service, AppGallery rules, and applicable local laws; you are solely responsible for consequences of violating them.\n\n4. The App is an independent third-party tool with no affiliation with Valve, Steam, SteamKit2, or ArchiSteamFarm, and does not represent their official position."
+    },
+    {
+      "name": "steam_legal_privacy_title",
+      "value": "ASF Workshop and Privacy Statement"
+    },
+    {
+      "name": "steam_legal_privacy_subtitle",
+      "value": "Updated: 2026.8.12"
+    },
+    {
+      "name": "steam_legal_privacy_sensitive_title",
+      "value": "1. How We Collect and Use Your Personal Information"
+    },
+    {
+      "name": "steam_legal_privacy_sensitive_desc",
+      "value": "ASF Workshop is provided to you by Zhou Longyi (\"we\" or \"us\") as an app for Steam account and inventory management. This Privacy Statement is prepared by us to address the processing of your personal information.\n\nWe attach great importance to the protection of your personal information and privacy, and will provide appropriate security protection measures in accordance with legal requirements and mature industry security standards.\n\nWe use your personal information only where there is a lawful basis. Under applicable law, we may use your personal information based on your consent, as necessary for performing or entering into a contract with you, or as necessary for fulfilling statutory obligations.\n\n1.1 We provide you with the Steam account and inventory management service described below. During your use of related business processes, we process the information necessary to enter into a contract. If you do not provide such information, it may affect your use of the relevant functions or services of this app.\n\nTo provide app functions, and with your consent, we collect your network type."
+    },
+    {
+      "name": "steam_legal_privacy_cache_title",
+      "value": "2. Device Permission Calls"
+    },
+    {
+      "name": "steam_legal_privacy_cache_desc",
+      "value": "Motion data (to read the user's current motion state)\n\nUsed to provide the smart holding gesture feature"
+    },
+    {
+      "name": "steam_legal_privacy_network_title",
+      "value": "3. Managing Your Personal Information"
+    },
+    {
+      "name": "steam_legal_privacy_network_desc",
+      "value": "If you have further requests concerning your data-subject rights, or any questions, comments, or suggestions, you may contact us using the methods described in the \"How to Contact Us\" section of this statement and exercise your related rights."
+    },
+    {
+      "name": "steam_legal_privacy_system_title",
+      "value": "4. Where and How Long Information Is Stored"
+    },
+    {
+      "name": "steam_legal_privacy_system_desc",
+      "value": "4.1 We undertake that, except as otherwise provided by laws or regulations, we retain your information for no longer than the shortest period necessary to achieve the processing purposes.\n\n4.2 The information above will be transmitted to and stored on servers within mainland China."
+    },
+    {
+      "name": "steam_legal_privacy_choice_title",
+      "value": "5. How to Contact Us"
+    },
+    {
+      "name": "steam_legal_privacy_choice_desc",
+      "value": "You may contact us using the following method and exercise your related rights. We will reply as soon as possible.\n\nEmail: 1335941759@qq.com\n\nIf you are dissatisfied with our reply, especially where the processing of personal information has harmed your legitimate rights and interests, you may also seek resolution through external channels such as filing a lawsuit with a court of competent jurisdiction, or complaining to an industry self-regulatory association or a competent government authority. You may also contact us to learn about potentially applicable complaint channels.\n\nEffective: 2026.8.12"
+    },
+    {
+      "name": "steam_legal_source_title",
+      "value": "Open-source Notices"
+    },
+    {
+      "name": "steam_legal_source_subtitle",
+      "value": "Licenses, core library, and trademark notices"
+    },
+    {
+      "name": "steam_legal_source_app_title",
+      "value": "ASF Workshop and NGF Framework"
+    },
+    {
+      "name": "steam_legal_source_app_desc",
+      "value": "The ASF Workshop app layer and bundled NGF framework are released under the MIT License. The complete license text is in the LICENSE file in the project repository."
+    },
+    {
+      "name": "steam_legal_source_core_title",
+      "value": "OpenHarmonyASF Core"
+    },
+    {
+      "name": "steam_legal_source_core_desc",
+      "value": "The OpenHarmonyASF submodule and steam_core HAR are released under Apache License 2.0. They provide platform-independent Steam/ASF protocol, import, token, and farming core capabilities."
+    },
+    {
+      "name": "steam_legal_source_trademark_title",
+      "value": "Trademarks and Third-party Names"
+    },
+    {
+      "name": "steam_legal_source_trademark_desc",
+      "value": "Names such as Steam, Valve, SteamKit2, and ArchiSteamFarm are used only to describe compatibility, dependency boundaries, and reference sources. They do not imply affiliation, authorization, or endorsement."
+    },
+    {
+      "name": "steam_legal_source_thirdparty_title",
+      "value": "Third-party References and Dependencies"
+    },
+    {
+      "name": "steam_legal_source_thirdparty_desc",
+      "value": "The App references protocol behavior and implementation ideas from the following open-source projects. The full license texts are available in the respective repositories:\n\n1. SteamKit2 (SteamRE, LGPL-2.1): reference for Steam network protocol behavior.\n\n2. protobuf-net (Apache License 2.0): a dependency of SteamKit2.\n\n3. @ohos/hypium and @ohos/hamock (Apache License 2.0): HarmonyOS unit test dependencies."
+    },
+    {
+      "name": "steam_legal_source_repositories_title",
+      "value": "Source Repositories"
+    },
+    {
+      "name": "steam_legal_source_repositories_desc",
+      "value": "Source code, licenses, change records, and security notices are maintained in these public repositories."
+    },
+    {
+      "name": "steam_legal_source_workshop_repo",
+      "value": "ASF Workshop Source"
+    },
+    {
+      "name": "steam_legal_source_core_repo",
+      "value": "OpenHarmonyASF Core"
+    },
+    {
+      "name": "steam_settings_holding_enabled",
+      "value": "Operating Adaptation Enabled"
+    },
+    {
+      "name": "steam_settings_farming_account_required",
+      "value": "Select a signed-in account before changing farming preferences."
+    },
+    {
+      "name": "steam_settings_farming_priority_queue_only",
+      "value": "Priority Games Only"
+    },
+    {
+      "name": "steam_settings_farming_priority_queue_empty",
+      "value": "There are no priority games. Farming will not start automatically while this is enabled."
+    },
+    {
+      "name": "steam_settings_farming_effective_after_restart",
+      "value": "Saved preferences take effect when the next farming task starts."
+    },
+    {
+      "name": "steam_settings_farming_increase",
+      "value": "Increase"
+    },
+    {
+      "name": "steam_settings_farming_decrease",
+      "value": "Decrease"
+    },
+    {
+      "name": "steam_settings_farming_save",
+      "value": "Save Farming Preferences"
+    },
+    {
+      "name": "steam_settings_farming_saving",
+      "value": "Saving"
+    },
+    {
+      "name": "steam_settings_farming_saved",
+      "value": "Farming preferences saved."
+    },
+    {
+      "name": "steam_settings_farming_save_failed",
+      "value": "Could not save preferences. Try again later."
+    },
+    {
+      "name": "steam_settings_region_title",
+      "value": "Account Region"
+    },
+    {
+      "name": "steam_settings_region_desc",
+      "value": "Language and currency for inventory, badges, cards, messages and market prices follow the selected region."
+    },
+    {
+      "name": "steam_settings_region_account_required",
+      "value": "Sign in to an account first, then set its region."
+    },
+    {
+      "name": "steam_settings_region_auto",
+      "value": "Automatic"
+    },
+    {
+      "name": "steam_settings_region_cn",
+      "value": "China · ¥"
+    },
+    {
+      "name": "steam_settings_region_tw",
+      "value": "Taiwan, China · NT$"
+    },
+    {
+      "name": "steam_settings_region_hk",
+      "value": "Hong Kong, China · HK$"
+    },
+    {
+      "name": "steam_settings_region_jp",
+      "value": "Japan · ¥"
+    },
+    {
+      "name": "steam_settings_region_kr",
+      "value": "Korea · ₩"
+    },
+    {
+      "name": "steam_settings_region_us",
+      "value": "United States · $"
+    },
+    {
+      "name": "steam_settings_region_eu",
+      "value": "Europe · €"
+    },
+    {
+      "name": "steam_settings_region_gb",
+      "value": "United Kingdom · £"
+    },
+    {
+      "name": "steam_settings_region_ru",
+      "value": "Russia · ₽"
+    },
+    {
+      "name": "steam_settings_region_br",
+      "value": "Brazil · R$"
+    },
+    {
+      "name": "steam_settings_region_effective",
+      "value": "Effective"
+    },
+    {
+      "name": "steam_settings_region_save",
+      "value": "Save Region"
+    },
+    {
+      "name": "steam_settings_region_saving",
+      "value": "Saving"
+    },
+    {
+      "name": "steam_settings_region_saved",
+      "value": "Region saved."
+    },
+    {
+      "name": "steam_settings_region_save_failed",
+      "value": "Could not save the region. Try again later."
+    },
+    {
+      "name": "steam_settings_appearance_title",
+      "value": "Appearance"
+    },
+    {
+      "name": "steam_settings_appearance_desc",
+      "value": "When off, the default solid background is kept and the Steam profile background is hidden."
+    },
+    {
+      "name": "steam_settings_profile_background_label",
+      "value": "Use Steam profile background"
+    },
+    {
+      "name": "steam_home_friends_button",
+      "value": "Friends"
+    },
+    {
+      "name": "steam_home_card_action_library",
+      "value": "Library"
+    },
+    {
+      "name": "steam_library_title",
+      "value": "Game Library"
+    },
+    {
+      "name": "steam_library_subtitle",
+      "value": "All games of the current account"
+    },
+    {
+      "name": "steam_library_account_empty",
+      "value": "No account selected"
+    },
+    {
+      "name": "steam_library_metric_games",
+      "value": "Games"
+    },
+    {
+      "name": "steam_library_metric_favorites",
+      "value": "Favorites"
+    },
+    {
+      "name": "steam_library_metric_playtime",
+      "value": "Playtime (hrs)"
+    },
+    {
+      "name": "steam_library_hours_unit",
+      "value": "h"
+    },
+    {
+      "name": "steam_library_last_played_label",
+      "value": "Last played"
+    },
+    {
+      "name": "steam_game_detail_subtitle",
+      "value": "Game details"
+    },
+    {
+      "name": "steam_game_detail_open_community",
+      "value": "Open in Community"
+    },
+    {
+      "name": "steam_game_detail_playtime_title",
+      "value": "Play stats"
+    },
+    {
+      "name": "steam_game_detail_playtime_total",
+      "value": "Total playtime"
+    },
+    {
+      "name": "steam_game_detail_playtime_two_weeks",
+      "value": "Last 2 weeks"
+    },
+    {
+      "name": "steam_game_detail_playtime_last_played",
+      "value": "Last played"
+    },
+    {
+      "name": "steam_game_detail_achievements_title",
+      "value": "Achievements"
+    },
+    {
+      "name": "steam_game_detail_achievements_unlocked",
+      "value": "Unlocked"
+    },
+    {
+      "name": "steam_game_detail_achievements_locked",
+      "value": "Locked"
+    },
+    {
+      "name": "steam_game_detail_achievements_empty",
+      "value": "No achievement data"
+    },
+    {
+      "name": "steam_game_detail_achievements_expand",
+      "value": "View all achievements"
+    },
+    {
+      "name": "steam_game_detail_achievements_collapse",
+      "value": "Collapse"
+    },
+    {
+      "name": "steam_game_detail_achievements_summary_only",
+      "value": "Summary only; achievement details unavailable"
+    },
+    {
+      "name": "steam_game_detail_features_title",
+      "value": "Cloud saves & features"
+    },
+    {
+      "name": "steam_game_detail_cloud_supported",
+      "value": "Steam Cloud saves supported"
+    },
+    {
+      "name": "steam_game_detail_cloud_unsupported",
+      "value": "Steam Cloud saves not supported"
+    },
+    {
+      "name": "steam_game_detail_about_title",
+      "value": "About"
+    },
+    {
+      "name": "steam_game_detail_about_developers",
+      "value": "Developers"
+    },
+    {
+      "name": "steam_game_detail_about_publishers",
+      "value": "Publishers"
+    },
+    {
+      "name": "steam_game_detail_about_genres",
+      "value": "Genres"
+    },
+    {
+      "name": "steam_game_detail_news_title",
+      "value": "News"
+    },
+    {
+      "name": "steam_game_detail_news_empty",
+      "value": "No news yet"
+    },
+    {
+      "name": "steam_game_detail_load_failed",
+      "value": "Failed to load details"
+    },
+    {
+      "name": "steam_game_detail_retry",
+      "value": "Retry"
+    },
+    {
+      "name": "steam_library_sort_name",
+      "value": "Name"
+    },
+    {
+      "name": "steam_library_sort_recent",
+      "value": "Recently played"
+    },
+    {
+      "name": "steam_library_sort_playtime",
+      "value": "Playtime"
+    },
+    {
+      "name": "steam_library_sort_favorite",
+      "value": "Favorites first"
+    },
+    {
+      "name": "steam_library_status_idle",
+      "value": "Library not synced"
+    },
+    {
+      "name": "steam_library_status_loading",
+      "value": "Syncing library…"
+    },
+    {
+      "name": "steam_library_status_synced",
+      "value": "Library synced"
+    },
+    {
+      "name": "steam_library_status_failed",
+      "value": "Library sync failed"
+    },
+    {
+      "name": "steam_library_status_stale",
+      "value": "Showing cached data; refresh will retry"
+    },
+    {
+      "name": "steam_library_status_not_logged_on",
+      "value": "Sign in first"
+    },
+    {
+      "name": "steam_library_unavailable_title",
+      "value": "Library unavailable"
+    },
+    {
+      "name": "steam_library_unavailable_desc",
+      "value": "Sign in to a Steam account on the accounts page to view the game library."
+    },
+    {
+      "name": "steam_library_empty_title",
+      "value": "Empty library"
+    },
+    {
+      "name": "steam_library_empty_desc",
+      "value": "No games were found for this account."
+    },
+    {
+      "name": "steam_home_card_library_title",
+      "value": "Game Library"
+    },
+    {
+      "name": "steam_home_card_library_desc",
+      "value": "Browse all games, favorites and playtime of the current account, with multiple sort options."
+    },
+    {
+      "name": "steam_home_card_library_open",
+      "value": "Open library"
+    },
+    {
+      "name": "steam_badge_detail_subtitle",
+      "value": "Badge details"
+    },
+    {
+      "name": "steam_badge_detail_kind_game",
+      "value": "Game badge"
+    },
+    {
+      "name": "steam_badge_detail_kind_community",
+      "value": "Community badge"
+    },
+    {
+      "name": "steam_badge_detail_status_crafted",
+      "value": "Crafted"
+    },
+    {
+      "name": "steam_badge_detail_status_uncrafted",
+      "value": "Not crafted"
+    },
+    {
+      "name": "steam_badge_detail_level_label",
+      "value": "Level"
+    },
+    {
+      "name": "steam_badge_detail_experience_label",
+      "value": "Experience"
+    },
+    {
+      "name": "steam_badge_detail_playtime_label",
+      "value": "Playtime"
+    },
+    {
+      "name": "steam_badge_detail_cards_remaining_label",
+      "value": "Cards remaining"
+    },
+    {
+      "name": "steam_badge_detail_open_badge_page",
+      "value": "Open badge page"
+    },
+    {
+      "name": "steam_badge_detail_open_store",
+      "value": "Open store page"
+    },
+    {
+      "name": "steam_inventory_view_detail",
+      "value": "View Item Detail"
+    },
+    {
+      "name": "steam_inventory_detail_subtitle",
+      "value": "Item Detail and Community Data"
+    },
+    {
+      "name": "steam_inventory_detail_loading",
+      "value": "Loading inventory detail…"
+    },
+    {
+      "name": "steam_inventory_detail_load_failed",
+      "value": "Failed to load the inventory detail. Please try again later."
+    },
+    {
+      "name": "steam_inventory_detail_retry",
+      "value": "Retry"
+    },
+    {
+      "name": "steam_inventory_detail_market_title",
+      "value": "Market"
+    },
+    {
+      "name": "steam_inventory_detail_market_lowest",
+      "value": "Lowest Price"
+    },
+    {
+      "name": "steam_inventory_detail_market_median",
+      "value": "Median Price"
+    },
+    {
+      "name": "steam_inventory_detail_market_volume",
+      "value": "Sold Today"
+    },
+    {
+      "name": "steam_inventory_detail_market_unavailable",
+      "value": "No market data is available for this item"
+    },
+    {
+      "name": "steam_inventory_detail_market_not_listed",
+      "value": "This item is not listed on the market"
+    },
+    {
+      "name": "steam_inventory_detail_market_loading",
+      "value": "Loading market data…"
+    },
+    {
+      "name": "steam_inventory_detail_price_history_title",
+      "value": "Price History"
+    },
+    {
+      "name": "steam_inventory_detail_price_history_empty",
+      "value": "No price history is available"
+    },
+    {
+      "name": "steam_inventory_detail_price_history_loading",
+      "value": "Loading price history…"
+    },
+    {
+      "name": "steam_inventory_detail_price_history_failed",
+      "value": "Price history is unavailable"
+    },
+    {
+      "name": "steam_inventory_detail_price_history_hint",
+      "value": "History prices use the account region currency, for reference only"
+    },
+    {
+      "name": "steam_inventory_detail_price_updated",
+      "value": "Price updated"
+    },
+    {
+      "name": "steam_inventory_detail_attributes_title",
+      "value": "Item Attributes"
+    },
+    {
+      "name": "steam_inventory_detail_attribute_asset_id",
+      "value": "Asset ID"
+    },
+    {
+      "name": "steam_inventory_detail_attribute_class_id",
+      "value": "Class ID"
+    },
+    {
+      "name": "steam_inventory_detail_attribute_instance_id",
+      "value": "Instance ID"
+    },
+    {
+      "name": "steam_inventory_detail_attribute_app_id",
+      "value": "App ID"
+    },
+    {
+      "name": "steam_inventory_detail_attribute_context_id",
+      "value": "Context ID"
+    },
+    {
+      "name": "steam_inventory_detail_attribute_amount",
+      "value": "Owned"
+    },
+    {
+      "name": "steam_inventory_detail_attribute_original_amount",
+      "value": "Original Amount"
+    },
+    {
+      "name": "steam_inventory_detail_attribute_card_drop",
+      "value": "Card Drop State"
+    },
+    {
+      "name": "steam_inventory_detail_card_drop_available",
+      "value": "Available"
+    },
+    {
+      "name": "steam_inventory_detail_card_drop_dropped",
+      "value": "Dropped"
+    },
+    {
+      "name": "steam_inventory_detail_card_drop_unknown",
+      "value": "Unknown"
+    },
+    {
+      "name": "steam_inventory_detail_card_drop_not_applicable",
+      "value": "Not Applicable"
+    },
+    {
+      "name": "steam_inventory_detail_description_title",
+      "value": "Description"
+    },
+    {
+      "name": "steam_inventory_detail_description_empty",
+      "value": "This item has no description"
+    },
+    {
+      "name": "steam_inventory_detail_badge_title",
+      "value": "Badge Progress"
+    },
+    {
+      "name": "steam_inventory_detail_badge_hours_played",
+      "value": "Playtime"
+    },
+    {
+      "name": "steam_inventory_detail_badge_cards_remaining",
+      "value": "Drops Remaining"
+    },
+    {
+      "name": "steam_inventory_detail_badge_level",
+      "value": "Badge Level %d"
+    },
+    {
+      "name": "steam_inventory_detail_badge_crafted",
+      "value": "Crafted"
+    },
+    {
+      "name": "steam_inventory_detail_badge_not_crafted",
+      "value": "Not Crafted"
+    },
+    {
+      "name": "steam_inventory_detail_badge_ready",
+      "value": "Cards complete, ready to craft"
+    },
+    {
+      "name": "steam_inventory_detail_badge_no_data",
+      "value": "No badge progress for this game"
+    },
+    {
+      "name": "steam_inventory_detail_game_title",
+      "value": "Related Game"
+    },
+    {
+      "name": "steam_inventory_detail_game_no_data",
+      "value": "No related game information"
+    },
+    {
+      "name": "steam_inventory_detail_game_loading",
+      "value": "Loading game information…"
+    },
+    {
+      "name": "steam_inventory_detail_game_load_failed",
+      "value": "Game information unavailable"
+    },
+    {
+      "name": "steam_inventory_detail_game_achievements",
+      "value": "Achievements"
+    },
+    {
+      "name": "steam_inventory_detail_game_playtime",
+      "value": "Playtime"
+    },
+    {
+      "name": "steam_inventory_detail_game_release_date",
+      "value": "Release Date"
+    },
+    {
+      "name": "steam_inventory_detail_game_developers",
+      "value": "Developers"
+    },
+    {
+      "name": "steam_inventory_detail_game_genres",
+      "value": "Genres"
+    },
+    {
+      "name": "steam_inventory_detail_actions_title",
+      "value": "Community Links"
+    },
+    {
+      "name": "steam_inventory_detail_open_market",
+      "value": "Open Market Page"
+    },
+    {
+      "name": "steam_inventory_detail_open_community_item",
+      "value": "Open Community Item Page"
+    },
+    {
+      "name": "steam_inventory_detail_open_game_detail",
+      "value": "View Game Detail"
+    },
+    {
+      "name": "steam_inventory_detail_open_store",
+      "value": "Open Game Store Page"
+    },
+    {
+      "name": "steam_inventory_detail_owner_game",
+      "value": "Owner Game"
+    },
+    {
+      "name": "steam_inventory_detail_amount_chip",
+      "value": "Owned: %d"
+    },
+    {
+      "name": "steam_settings_hyper_snap_title",
+      "value": "App Quick Launch"
+    },
+    {
+      "name": "steam_settings_hyper_snap_desc",
+      "value": "Restores the process from a system memory snapshot for faster startup. Disable to fall back to standard cold start."
+    },
+    {
+      "name": "steam_settings_hyper_snap_enabled_label",
+      "value": "Enable Quick Launch"
+    },
+    {
+      "name": "steam_settings_hyper_snap_rebuild",
+      "value": "Rebuild Snapshot"
+    },
+    {
+      "name": "steam_settings_hyper_snap_saving",
+      "value": "Saving…"
+    },
+    {
+      "name": "steam_settings_hyper_snap_saved",
+      "value": "Saved and persists across restarts."
+    },
+    {
+      "name": "steam_settings_hyper_snap_save_failed",
+      "value": "Failed to save. This device may not support Quick Launch."
+    },
+    {
+      "name": "steam_settings_hyper_snap_rebuild_title",
+      "value": "Rebuild Quick Launch Snapshot?"
+    },
+    {
+      "name": "steam_settings_hyper_snap_rebuild_message",
+      "value": "The system will discard the current snapshot and recreate it during idle time to resolve compatibility issues."
+    },
+    {
+      "name": "steam_settings_hyper_snap_rebuild_confirm",
+      "value": "Rebuild"
+    },
+    {
+      "name": "steam_settings_hyper_snap_rebuilding",
+      "value": "Requesting rebuild…"
+    },
+    {
+      "name": "steam_settings_hyper_snap_rebuild_requested",
+      "value": "Snapshot rebuild requested."
+    },
+    {
+      "name": "steam_settings_hyper_snap_rebuild_failed",
+      "value": "Rebuild request failed."
+    },
+    {
+      "name": "steam_settings_hyper_snap_unavailable",
+      "value": "Quick Launch service is not available on this device system."
+    },
+    {
+      "name": "steam_farm_card_drop_title",
+      "value": "Card drop"
+    },
+    {
+      "name": "steam_farm_card_drop_app_id",
+      "value": "AppID %s"
+    },
+    {
+      "name": "steam_farm_card_drop_remaining",
+      "value": "Cards remaining: %s"
+    },
+    {
+      "name": "steam_farm_finished_title",
+      "value": "Farming finished"
+    },
+    {
+      "name": "steam_farm_finished_message",
+      "value": "Farming completed for this account with %s cards still pending."
+    },
+    {
+      "name": "steam_settings_farming_lists_title",
+      "value": "Priority queue & blacklist"
+    },
+    {
+      "name": "steam_settings_farming_lists_hint",
+      "value": "Comma-separated AppIDs; applies to the next farming plan."
+    },
+    {
+      "name": "steam_settings_farming_lists_priority_label",
+      "value": "Priority queue (fq)"
+    },
+    {
+      "name": "steam_settings_farming_lists_blacklist_label",
+      "value": "Blacklist (fb)"
+    },
+    {
+      "name": "steam_settings_farming_lists_placeholder",
+      "value": "e.g. 480,730"
+    },
+    {
+      "name": "steam_settings_farming_lists_save",
+      "value": "Save lists"
+    },
+    {
+      "name": "steam_settings_farming_lists_saving",
+      "value": "Saving…"
+    },
+    {
+      "name": "steam_settings_farming_lists_saved",
+      "value": "Lists saved."
+    },
+    {
+      "name": "steam_settings_farming_lists_failed",
+      "value": "Save failed; try again."
+    },
+    {
+      "name": "steam_settings_farming_lists_invalid",
+      "value": "Invalid AppIDs: decimal digits only, at most 128 entries."
+    },
+    {
+      "name": "steam_market_browse_title",
+      "value": "Market browse"
+    },
+    {
+      "name": "steam_market_browse_subtitle",
+      "value": "Read-only Steam Community Market"
+    },
+    {
+      "name": "steam_market_browse_hint",
+      "value": "Search Steam Community Market listings; buying and selling complete inside the logged-in Steam page and are never executed in-app."
+    },
+    {
+      "name": "steam_market_browse_query_placeholder",
+      "value": "Search item name"
+    },
+    {
+      "name": "steam_market_browse_app_placeholder",
+      "value": "Filter by AppID (optional)"
+    },
+    {
+      "name": "steam_market_browse_search",
+      "value": "Search market"
+    },
+    {
+      "name": "steam_market_browse_empty",
+      "value": "No matching listings."
+    },
+    {
+      "name": "steam_market_browse_failed",
+      "value": "Market search failed; try again later."
+    },
+    {
+      "name": "steam_market_browse_rate_limited",
+      "value": "Rate limited by Steam; try again later."
+    },
+    {
+      "name": "steam_market_browse_price_unknown",
+      "value": "Price unknown"
+    },
+    {
+      "name": "steam_market_browse_listings_suffix",
+      "value": "%s listings"
+    },
+    {
+      "name": "steam_market_browse_open",
+      "value": "View"
+    },
+    {
+      "name": "steam_market_browse_prev",
+      "value": "Previous"
+    },
+    {
+      "name": "steam_market_browse_next",
+      "value": "Next"
+    },
+    {
+      "name": "steam_market_browse_total_suffix",
+      "value": "%s total"
+    },
+    {
+      "name": "steam_market_browse_entry",
+      "value": "Browse market"
+    },
+    {
+      "name": "steam_confirmation_title",
+      "value": "Confirmation center"
+    },
+    {
+      "name": "steam_confirmation_subtitle",
+      "value": "Review pending confirmations"
+    },
+    {
+      "name": "steam_confirmation_notice",
+      "value": "These are pending Steam Guard confirmations (trades, market, sign-ins). ASF Workshop never accepts or rejects them in-app; complete them on the Steam side."
+    },
+    {
+      "name": "steam_confirmation_refresh",
+      "value": "Refresh confirmations"
+    },
+    {
+      "name": "steam_confirmation_empty",
+      "value": "No pending confirmations."
+    },
+    {
+      "name": "steam_confirmation_open",
+      "value": "View"
+    },
+    {
+      "name": "steam_confirmation_entry",
+      "value": "Open confirmation center"
+    },
+    {
+      "name": "steam_confirmation_kind_trade",
+      "value": "Trade offer"
+    },
+    {
+      "name": "steam_confirmation_kind_market",
+      "value": "Market action"
+    },
+    {
+      "name": "steam_confirmation_kind_login",
+      "value": "Sign-in approval"
+    },
+    {
+      "name": "steam_confirmation_kind_unknown",
+      "value": "Confirmation"
+    },
+    {
+      "name": "steam_store_title",
+      "value": "Store & wishlist"
+    },
+    {
+      "name": "steam_store_subtitle",
+      "value": "Read-only Steam store browse"
+    },
+    {
+      "name": "steam_store_notice",
+      "value": "Search results and the wishlist are read-only; purchasing, cart and wishlist management complete in the logged-in Steam page."
+    },
+    {
+      "name": "steam_store_tab_search",
+      "value": "Store search"
+    },
+    {
+      "name": "steam_store_tab_wishlist",
+      "value": "Wishlist"
+    },
+    {
+      "name": "steam_store_search_placeholder",
+      "value": "Search game name"
+    },
+    {
+      "name": "steam_store_search_button",
+      "value": "Search"
+    },
+    {
+      "name": "steam_store_search_empty",
+      "value": "No results yet."
+    },
+    {
+      "name": "steam_store_search_failed",
+      "value": "Store search failed; try again later."
+    },
+    {
+      "name": "steam_store_price_unknown",
+      "value": "Price unknown"
+    },
+    {
+      "name": "steam_store_metascore_prefix",
+      "value": "Metascore "
+    },
+    {
+      "name": "steam_store_open",
+      "value": "Store page"
+    },
+    {
+      "name": "steam_store_total_suffix",
+      "value": "%s results"
+    },
+    {
+      "name": "steam_store_wishlist_empty",
+      "value": "The wishlist is empty or not visible."
+    },
+    {
+      "name": "steam_store_wishlist_failed",
+      "value": "Wishlist failed to load; try again later."
+    },
+    {
+      "name": "steam_store_wishlist_unnamed",
+      "value": "AppID %s"
+    },
+    {
+      "name": "steam_store_entry",
+      "value": "Store & wishlist"
+    },
+    {
+      "name": "steam_game_detail_host_title",
+      "value": "Game detail"
+    },
+    {
+      "name": "steam_game_detail_host_subtitle",
+      "value": "Info, achievements and news"
+    },
+    {
+      "name": "steam_badge_detail_open_game_detail",
+      "value": "View game detail"
+    },
+    {
+      "name": "steam_achievement_detail_title",
+      "value": "Achievement detail"
+    },
+    {
+      "name": "steam_achievement_detail_locked",
+      "value": "Not unlocked yet"
+    },
+    {
+      "name": "steam_achievement_detail_unlocked_at",
+      "value": "Unlocked at"
+    },
+    {
+      "name": "steam_achievement_detail_description",
+      "value": "Description"
+    },
+    {
+      "name": "steam_achievement_detail_no_description",
+      "value": "No description for this achievement."
+    },
+    {
+      "name": "steam_home_friends_online_suffix",
+      "value": "%s friends online"
+    },
+    {
+      "name": "steam_home_friends_open_hint",
+      "value": "View online friends and chats"
+    },
+    {
+      "name": "steam_wishlist_entry",
+      "value": "Wishlist"
+    },
+    {
+      "name": "steam_library_search_placeholder",
+      "value": "Search games"
+    },
+    {
+      "name": "steam_library_search_empty",
+      "value": "No matching games."
+    },
+    {
+      "name": "steam_library_search_clear",
+      "value": "Clear search"
+    },
+    {
+      "name": "steam_library_group_recent_2d",
+      "value": "Last 2 days"
+    },
+    {
+      "name": "steam_library_group_recent_7d",
+      "value": "Last week"
+    },
+    {
+      "name": "steam_library_group_recent_30d",
+      "value": "Last month"
+    },
+    {
+      "name": "steam_library_group_recent_older",
+      "value": "Earlier"
+    },
+    {
+      "name": "steam_library_group_pt_1000",
+      "value": "1000+ hours"
+    },
+    {
+      "name": "steam_library_group_pt_500",
+      "value": "500+ hours"
+    },
+    {
+      "name": "steam_library_group_pt_100",
+      "value": "100+ hours"
+    },
+    {
+      "name": "steam_library_group_pt_50",
+      "value": "50+ hours"
+    },
+    {
+      "name": "steam_library_group_pt_10",
+      "value": "10+ hours"
+    },
+    {
+      "name": "steam_library_group_pt_lt10",
+      "value": "Under 10 hours"
+    },
+    {
+      "name": "steam_library_group_never",
+      "value": "Never played"
     }
   ]
 }
