@@ -1,7 +1,6 @@
 import { HdsNavDestination } from '@kit.UIDesignKit';
 import {
   NGFControlStyleTokens,
-  NGFDocumentReadError,
   NGFHdsTitleBarOptionsFactory,
   NGFMaterialSurfaceTokens,
   ngfI18nManagerFacade,
@@ -19,9 +18,7 @@ import {
 } from 'steam_core';
 import {
   SteamArkAccountSnapshot,
-  SteamArkContentLocale,
   SteamArkGlobalImportSummary,
-  SteamArkRegionPolicy,
   SteamArkImportSummary,
   SteamArkLog,
   SteamArkQrAuthenticationSnapshot,
@@ -117,7 +114,6 @@ export struct SteamArkAccountsPage {
   @State private stateReady: boolean = false;
   @StorageProp('ngf_is_dark_mode') private isDarkMode: boolean = false;
   @StorageProp('steam_ark_profile_background_url') private profileBackgroundUrl: string = '';
-  @StorageProp('steam_ark_profile_background_enabled') private backgroundEnabled: boolean = true;
   @StorageProp('ngf_visual_effects_should_use_system_material_surface') private useSysMat: boolean = true;
   private readonly scroller: Scroller = steamArkTabScrollers.accounts;
   private authPollTimer: number = -1;
@@ -379,7 +375,7 @@ export struct SteamArkAccountsPage {
         true,
         false
       ))
-      .backgroundImage(this.backgroundEnabled ? this.profileBackgroundUrl : '')
+      .backgroundImage(this.profileBackgroundUrl)
       .backgroundImageSize(ImageSize.Cover)
       .ignoreLayoutSafeArea([LayoutSafeAreaType.SYSTEM], [LayoutSafeAreaEdge.TOP, LayoutSafeAreaEdge.BOTTOM])
       .bindToScrollable([this.scroller])
@@ -427,9 +423,7 @@ export struct SteamArkAccountsPage {
           left: 16,
           right: 16,
           top: this.embedded ? this.contentTopInsetVp : this.topInsetVp,
-          bottom: this.embedded
-            ? 84 + SteamArkExperiencePolicy.FRIENDS_BAR_RESERVE
-            : 92
+          bottom: this.embedded ? 84 : 92
         })
       }
       .width('100%')
@@ -439,11 +433,6 @@ export struct SteamArkAccountsPage {
       .nestedScroll({ scrollForward: NestedScrollMode.PARENT_FIRST, scrollBackward: NestedScrollMode.SELF_FIRST })
       .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
       .backgroundColor($r('app.color.background_transparent'))
-      .onDidScroll((_xOffset: number, yOffset: number): void => {
-        if (this.embedded) {
-          steamArkTabScrollers.notifyScrollDelta(yOffset);
-        }
-      })
     }
     .width('100%')
     .height('100%')
@@ -904,12 +893,7 @@ export struct SteamArkAccountsPage {
       ))
       .systemMaterial(ngfVisualEffectsFacade.buildSystemMaterialForFloatingControl())
       .onClick((): void => {
-        this.getUIContext().animateTo({
-          duration: SteamArkExperiencePolicy.SECTION_EXPAND_DURATION,
-          curve: Curve.EaseOut
-        }, (): void => {
-          this.showMaFileGuide = !this.showMaFileGuide;
-        });
+        this.showMaFileGuide = !this.showMaFileGuide;
       })
 
       if (this.showMaFileGuide) {
@@ -1004,9 +988,6 @@ export struct SteamArkAccountsPage {
       )
     })
     .systemMaterial(ngfVisualEffectsFacade.buildSystemMaterialForLightEffectControl())
-    .transition(TransitionEffect.OPACITY
-      .combine(TransitionEffect.translate({ y: '10vp' }))
-      .animation({ duration: SteamArkExperiencePolicy.SECTION_EXPAND_DURATION, curve: Curve.EaseOut }))
   }
 
   @Builder
@@ -1095,13 +1076,9 @@ export struct SteamArkAccountsPage {
       }
       .width('100%')
 
-      // The key must include UI-visible state: ArkUI ForEach reuses components
-      // for identical keys without re-running the item builder, so a sign-out,
-      // selection change or session transition would otherwise leave stale rows.
       ForEach(this.accounts, (account: SteamArkAccountSnapshot) => {
         this.buildAccountRow(account)
-      }, (account: SteamArkAccountSnapshot): string => account.profile.accountId + '|' +
-        String(account.session.state) + '|' + this.selectedAccountId)
+      }, (account: SteamArkAccountSnapshot): string => account.profile.accountId)
     }
     .width('100%')
     .padding(16)
@@ -1157,9 +1134,6 @@ export struct SteamArkAccountsPage {
                 .fontSize(11)
                 .fontColor(SteamArkTheme.textSecondary(this.isDarkMode))
             }
-            Text(this.accountRegionBadge(account))
-              .fontSize(11)
-              .fontColor(SteamArkTheme.textSecondary(this.isDarkMode))
             if (account.profile.walletBalance.length > 0) {
               Text(account.profile.walletCurrency + ' ' + account.profile.walletBalance)
                 .fontSize(11)
@@ -1241,7 +1215,7 @@ export struct SteamArkAccountsPage {
         void this.selectAccount(account.profile.accountId);
       }
     })
-    .bindContextMenuWithResponse(this.accountMenuItems(account), ResponseType.LongPress)
+    .bindContextMenuByResponseType(this.accountMenuItems(account), ResponseType.LongPress)
   }
 
   private accountMenuItems(account: SteamArkAccountSnapshot): Array<MenuElement> {
@@ -1283,12 +1257,6 @@ export struct SteamArkAccountsPage {
     };
     items.push(removeItem);
     return items;
-  }
-
-  private accountRegionBadge(account: SteamArkAccountSnapshot): string {
-    const locale: SteamArkContentLocale = SteamArkRegionPolicy.resolve(
-      account.region, account.profile.countryCode, account.profile.walletCurrency);
-    return locale.region + ' · ' + locale.currencyCode;
   }
 
   @Builder
@@ -2692,19 +2660,12 @@ export struct SteamArkAccountsPage {
       if (!this.isCurrentOperation(lifecycleGeneration, operationGeneration)) {
         return;
       }
-      if (error instanceof NGFDocumentReadError) {
-        // 用户已选中文件但读取失败：不能伪装成“已取消”，必须显示结构化失败。
-        this.statusMessage = $r('app.string.steam_accounts_import_read_failed');
-        SteamArkLog.error('AccountsPage', 'document import read failed; kind=' + kind.toString() +
-          ', errorType=' + SteamArkLog.errorKind(error) + ', detail=' + error.detail);
-      } else {
-        const detail = this.safeDisplayError(error instanceof Error && error.message.length > 0
-          ? error.message
-          : '');
-        this.statusMessage = detail.length > 0 ? detail : $r('app.string.steam_accounts_import_parse_failed');
-        SteamArkLog.error('AccountsPage', 'document import failed; kind=' + kind.toString() +
-          ', errorType=' + SteamArkLog.errorKind(error));
-      }
+      const detail = this.safeDisplayError(error instanceof Error && error.message.length > 0
+        ? error.message
+        : '');
+      this.statusMessage = detail.length > 0 ? detail : $r('app.string.steam_accounts_import_parse_failed');
+      SteamArkLog.error('AccountsPage', 'document import failed; kind=' + kind.toString() +
+        ', errorType=' + SteamArkLog.errorKind(error));
     } finally {
       if (this.isCurrentOperation(lifecycleGeneration, operationGeneration)) {
         this.isImporting = false;
