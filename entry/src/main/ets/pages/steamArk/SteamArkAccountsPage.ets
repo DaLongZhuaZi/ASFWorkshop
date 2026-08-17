@@ -1215,7 +1215,7 @@ export struct SteamArkAccountsPage {
         void this.selectAccount(account.profile.accountId);
       }
     })
-    .bindContextMenuByResponseType(this.accountMenuItems(account), ResponseType.LongPress)
+    .bindContextMenu(this.accountMenuItems(account), ResponseType.LongPress)
   }
 
   private accountMenuItems(account: SteamArkAccountSnapshot): Array<MenuElement> {
